@@ -1,0 +1,557 @@
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue'
+import {
+  OUTPUT_RATIO,
+  models,
+  plansForProvider,
+  planShareForTokens,
+  pricingUpdated,
+  providerColors,
+  useCostUnit,
+  useSelectedModels,
+  useTurns,
+  type ModelPricing,
+} from '../../composables/usePricing'
+import {
+  classifyScenario,
+  conversationTotal,
+  SCENARIOS,
+  SELECTABLE_SCENARIOS,
+  type Scenario,
+} from '../../composables/useScenario'
+import { stripProtectionMarkers, useTokenizer } from '../../composables/useTokenizer'
+import type { UsageEstimate } from '../../types'
+
+// 極簡版即時分析：計算邏輯與 AnalysisPanel 相同（估算流程見該檔註解），呈現重排為單屏雙欄
+const props = defineProps<{
+  currentModelId: string
+  llmProfile: Scenario | null
+  llmEstimate: UsageEstimate | null
+}>()
+const prompt = defineModel<string>({ required: true })
+
+const { count } = useTokenizer()
+const effectiveText = computed(() => stripProtectionMarkers(prompt.value))
+const tokensO200k = computed(() => count(effectiveText.value, 'o200k_base'))
+const tokensCl100k = computed(() => count(effectiveText.value, 'cl100k_base'))
+const hasText = computed(() => effectiveText.value.trim().length > 0)
+const charCount = computed(() => effectiveText.value.length)
+
+const currentModelPricing = computed(
+  () => models.find((m) => m.id === props.currentModelId) ?? models[0],
+)
+
+// ---- 消耗情境（關鍵字判定 → LLM 精算回填 → 可手動切換）----
+const override = ref<'auto' | Scenario>('auto')
+const llmConfirmed = ref(false)
+const turns = useTurns()
+const userSetTurns = ref(false)
+const mappedLlmProfile = computed<Scenario | null>(() =>
+  props.llmProfile === 'conversation' ? 'single' : props.llmProfile,
+)
+watch(prompt, () => {
+  override.value = 'auto'
+  llmConfirmed.value = false
+  turns.value = 1
+  userSetTurns.value = false
+})
+watch(mappedLlmProfile, (p) => {
+  if (p) {
+    override.value = p
+    llmConfirmed.value = true
+  }
+})
+watch(
+  () => props.llmProfile,
+  (p) => {
+    if (p === 'conversation' && !userSetTurns.value) turns.value = Math.max(turns.value, 8)
+  },
+)
+
+const promptTokens = computed(() => {
+  const tokens = tokensO200k.value ?? Math.ceil(effectiveText.value.length * 0.7)
+  return Math.max(tokens, 1)
+})
+
+const estimate = computed(() => {
+  const N = Math.max(turns.value, 1)
+  if (llmConfirmed.value && props.llmEstimate && override.value === mappedLlmProfile.value) {
+    const e = props.llmEstimate
+    const isAgent = mappedLlmProfile.value === 'agent'
+    const perInLo = promptTokens.value + e.context_overhead_min
+    const perInHi = promptTokens.value + e.context_overhead_max
+    const [inLo, outLo] =
+      !isAgent && N > 1 ? conversationTotal(perInLo, e.expected_output_min, N) : [perInLo, e.expected_output_min]
+    const [inHi, outHi] =
+      !isAgent && N > 1 ? conversationTotal(perInHi, e.expected_output_max, N) : [perInHi, e.expected_output_max]
+    return {
+      scenario: mappedLlmProfile.value!,
+      signals: e.reason ? [e.reason] : [],
+      taskLabel: 'LLM 精算',
+      inputRange: [Math.round(inLo), Math.round(inHi)] as [number, number],
+      outputRange: [Math.round(outLo), Math.round(outHi)] as [number, number],
+      reliable: !isAgent,
+      suggestedTurns: 1,
+      calls: [e.calls_min, e.calls_max] as [number, number],
+    }
+  }
+  const h = classifyScenario(
+    effectiveText.value,
+    promptTokens.value,
+    override.value === 'auto' ? undefined : override.value,
+    { turns: N },
+  )
+  return { ...h, calls: [1, 1] as [number, number] }
+})
+const scenarioInfo = computed(() => SCENARIOS[estimate.value.scenario])
+const isLLMRefined = computed(() => estimate.value.taskLabel === 'LLM 精算')
+watch(
+  () => estimate.value.suggestedTurns,
+  (st) => {
+    if (!userSetTurns.value && st > 1 && turns.value === 1) turns.value = st
+  },
+  { immediate: true },
+)
+
+// ---- 成本表（勾選/單位切換與現行畫面共用同一份狀態）----
+const selectedModelIds = useSelectedModels()
+const unit = useCostUnit()
+const pickerOpen = ref(false)
+const providerGroups = computed(() => {
+  const seen = new Map<string, ModelPricing[]>()
+  for (const m of models) {
+    if (!seen.has(m.provider)) seen.set(m.provider, [])
+    seen.get(m.provider)!.push(m)
+  }
+  return [...seen.entries()].map(([provider, items]) => ({ provider, items }))
+})
+function toggleModel(id: string) {
+  const list = selectedModelIds.value
+  selectedModelIds.value = list.includes(id) ? list.filter((x) => x !== id) : [...list, id]
+}
+
+interface Row {
+  m: ModelPricing
+  costLo: number
+  costHi: number
+  tokLo: number
+  tokHi: number
+  metric: number
+  assumption: string
+}
+const rows = computed<Row[]>(() => {
+  const e = estimate.value
+  const baseTok = Math.max(promptTokens.value, 1)
+  const assumption = `假設 input ${e.inputRange[0].toLocaleString()}–${e.inputRange[1].toLocaleString()}、output ${e.outputRange[0].toLocaleString()}–${e.outputRange[1].toLocaleString()} tokens × ${e.calls[0]}–${e.calls[1]} 次呼叫（${e.taskLabel}｜${scenarioInfo.value.label}）`
+  return models
+    .filter((m) => selectedModelIds.value.includes(m.id))
+    .map((m) => {
+      const encTok = (m.encoding === 'cl100k_base' ? tokensCl100k.value : tokensO200k.value) ?? baseTok
+      const ratio = encTok / baseTok
+      const verb = m.verbosity ?? 1
+      const outLo = e.outputRange[0] * verb
+      const outHi = e.outputRange[1] * verb
+      const costLo = hasText.value
+        ? ((e.inputRange[0] * m.input_per_1m + outLo * m.output_per_1m) / 1_000_000) * e.calls[0]
+        : 0
+      const costHi = hasText.value
+        ? ((e.inputRange[1] * m.input_per_1m + outHi * m.output_per_1m) / 1_000_000) * e.calls[1]
+        : 0
+      const tokLo = hasText.value ? (e.inputRange[0] * ratio + outLo) * e.calls[0] : 0
+      const tokHi = hasText.value ? (e.inputRange[1] * ratio + outHi) * e.calls[1] : 0
+      return { m, costLo, costHi, tokLo, tokHi, metric: unit.value === 'tokens' ? tokHi : costHi, assumption }
+    })
+    .sort((a, b) => a.metric - b.metric)
+})
+const maxMetric = computed(() => Math.max(...rows.value.map((r) => r.metric), 1e-12))
+const minMetric = computed(() => Math.min(...rows.value.map((r) => r.metric)))
+const hasSpread = computed(() => hasText.value && rows.value.length >= 2 && minMetric.value !== maxMetric.value)
+
+function rowMark(r: Row): { label: string; cls: string } | null {
+  if (r.m.id === props.currentModelId) return { label: '你用的', cls: 'text-[#c26a54]' }
+  if (r.m.free) return { label: '免費', cls: 'text-emerald-600 font-semibold' }
+  if (hasSpread.value && r.metric === minMetric.value) return { label: '最省', cls: 'text-emerald-600 font-semibold' }
+  if (hasSpread.value && r.metric === maxMetric.value) return { label: '最貴', cls: 'text-[#c26a54]' }
+  return null
+}
+function fmtCost(v: number): string {
+  if (v === 0) return '$0'
+  if (v < 0.01) return '$' + v.toFixed(4)
+  if (v < 1) return '$' + v.toFixed(3)
+  return '$' + v.toFixed(2)
+}
+function fmtTok(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
+  if (n >= 10_000) return (n / 1_000).toFixed(1) + 'K'
+  return Math.round(n).toLocaleString('en-US')
+}
+function rangeText(r: Row): string {
+  if (!hasText.value) return '—'
+  if (unit.value === 'tokens') {
+    const pre = r.m.provider !== 'OpenAI' ? '≈' : ''
+    return Math.round(r.tokLo) === Math.round(r.tokHi)
+      ? `${pre}${fmtTok(r.tokHi)}`
+      : `${pre}${fmtTok(r.tokLo)}–${fmtTok(r.tokHi)}`
+  }
+  return r.costLo === r.costHi ? fmtCost(r.costLo) : `${fmtCost(r.costLo)}–${fmtCost(r.costHi)}`
+}
+
+// ---- 大字結論（不依賴勾選清單：你用的模型直接算、最省從勾選中挑） ----
+function modelCostRange(m: ModelPricing): { lo: number; hi: number } {
+  const e = estimate.value
+  const verb = m.verbosity ?? 1
+  return {
+    lo: ((e.inputRange[0] * m.input_per_1m + e.outputRange[0] * verb * m.output_per_1m) / 1_000_000) * e.calls[0],
+    hi: ((e.inputRange[1] * m.input_per_1m + e.outputRange[1] * verb * m.output_per_1m) / 1_000_000) * e.calls[1],
+  }
+}
+const yourCost = computed(() => (hasText.value ? modelCostRange(currentModelPricing.value) : null))
+const bestRow = computed(() => {
+  const cands = rows.value.filter((r) => !r.m.free && r.m.id !== props.currentModelId)
+  return cands.length ? [...cands].sort((a, b) => a.costHi - b.costHi)[0] : null
+})
+const bestSavePct = computed(() =>
+  yourCost.value && bestRow.value && yourCost.value.hi > 0
+    ? (1 - bestRow.value.costHi / yourCost.value.hi) * 100
+    : 0,
+)
+
+// 多輪 caching 一行摘要（跟現行畫面同公式：歷史 0.1× 讀取 + 1.25× 寫入溢價）
+const convSummary = computed(() => {
+  if (!hasText.value || turns.value <= 1) return null
+  const U = promptTokens.value
+  const N = turns.value
+  const grow = U * (1 + OUTPUT_RATIO)
+  const totalInput = (grow * N * (N - 1)) / 2 + U * N
+  const totalOutput = U * OUTPUT_RATIO * N
+  const inR = currentModelPricing.value.input_per_1m / 1_000_000
+  const outR = currentModelPricing.value.output_per_1m / 1_000_000
+  const noCache = totalInput * inR + totalOutput * outR
+  const cache = (1.25 * grow * N + 0.1 * ((grow * N * (N - 1)) / 2)) * inR + totalOutput * outR
+  return {
+    totalTokens: totalInput + totalOutput,
+    noCache,
+    cache,
+    savePct: noCache > 0 ? (1 - cache / noCache) * 100 : 0,
+  }
+})
+
+// ---- 訂閱 strip（依你用的模型的提供商）----
+const subPlans = computed(() => {
+  const e = estimate.value
+  const perQueryHi = (e.inputRange[1] + e.outputRange[1] * (currentModelPricing.value.verbosity ?? 1)) * e.calls[1]
+  return plansForProvider(currentModelPricing.value.provider)
+    .slice(0, 3)
+    .map((p) => {
+      const share = planShareForTokens(perQueryHi, p)
+      return { plan: p, pct: share.pct, q: share.pct > 0 ? Math.floor(100 / share.pct) : 0 }
+    })
+})
+function fmtPct(pct: number): string {
+  if (pct < 0.1) return '<0.1'
+  if (pct >= 100) return '100'
+  return pct.toFixed(1)
+}
+
+// ---- 怎麼省（規則版，按壓縮後右邊會有 LLM 版建議）----
+const outputCostShare = computed(() => {
+  const e = estimate.value
+  const m = currentModelPricing.value
+  const inC = e.inputRange[1] * m.input_per_1m
+  const outC = e.outputRange[1] * (m.verbosity ?? 1) * m.output_per_1m
+  const s = inC + outC
+  return s > 0 ? (outC / s) * 100 : 0
+})
+const tips = computed(() => {
+  const list: { pct: string; title: string; desc: string }[] = []
+  if (bestRow.value && bestSavePct.value > 5) {
+    list.push({
+      pct: `-${bestSavePct.value.toFixed(0)}%`,
+      title: `換到 ${bestRow.value.m.name}`,
+      desc: `效能 ${bestRow.value.m.perf_est ? '≈' : ''}${bestRow.value.m.perf}，單價只有 ${currentModelPricing.value.name} 的一小部分。`,
+    })
+  }
+  if (estimate.value.scenario === 'agent') {
+    list.push({
+      pct: '⚠️',
+      title: '這是一整包工作',
+      desc: '消耗由 AI 自己呼叫工具的次數決定，同一件事跑兩次可能差 5–10 倍，區間僅為量級參考。',
+    })
+  } else if (estimate.value.scenario === 'search') {
+    list.push({
+      pct: '🔍',
+      title: '搜尋回填才是大頭',
+      desc: '搜尋結果全文會塞回 context，實際 input 遠大於你貼的文字。',
+    })
+  } else if (turns.value > 1) {
+    list.push({
+      pct: '-50%+',
+      title: '換新主題就開新對話',
+      desc: '每輪都重送整段歷史，長對話的消耗以 O(N²) 成長。',
+    })
+  } else {
+    list.push({
+      pct: '-25%',
+      title: '固定說明開 caching',
+      desc: '重複呼叫的固定段落開 prompt caching，之後只收約 10% 費用。',
+    })
+  }
+  list.push({
+    pct: `-${Math.min(Math.round(outputCostShare.value / 2), 60)}%`,
+    title: '限制回覆長度',
+    desc: `這類任務 output 佔成本約 ${outputCostShare.value.toFixed(0)}%，加「請精簡回答」最有感。`,
+  })
+  return list.slice(0, 3)
+})
+</script>
+
+<template>
+  <main class="mx-auto grid min-h-0 w-full max-w-[1400px] flex-1 grid-cols-1 gap-x-12 gap-y-6 px-8 py-5 lg:grid-cols-12 lg:overflow-y-auto">
+    <!-- 左：prompt + 結論 + 訂閱 -->
+    <section class="flex min-h-0 flex-col lg:col-span-5">
+      <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c]">你的 Prompt</p>
+      <textarea
+        v-model="prompt"
+        rows="5"
+        placeholder="貼上你要送給 AI 的問題或指令…（用 [[ ]] 包住不能修改的段落）"
+        class="mt-2 max-h-64 min-h-36 w-full resize-y rounded-lg border border-[#eae7de] bg-[#fdfcf8] p-4 font-mono text-[13px] leading-6 text-[#3c4250] placeholder:text-[#99a0ac] focus:outline-2 focus:outline-emerald-400"
+      />
+      <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] text-[#767e8c]">
+        <span><b class="font-mono text-[#1d2129]">{{ (tokensO200k ?? 0).toLocaleString('en-US') }}</b> tokens · 約 {{ charCount }} 字</span>
+        <span class="rounded-full bg-[#f2f0ea] px-2.5 py-1 text-xs" :title="scenarioInfo.note"
+          >{{ scenarioInfo.icon }} {{ scenarioInfo.label }}</span
+        >
+        <span class="rounded-full px-2.5 py-1 text-xs" :class="isLLMRefined ? 'bg-emerald-100 text-emerald-700' : 'bg-[#f2f0ea]'"
+          >{{ isLLMRefined ? '🤖 AI 精算' : '⚡ 規則估算' }}</span
+        >
+        <!-- 判定依據（可被打臉，所以秀出來） -->
+        <span
+          v-for="sig in estimate.signals.slice(0, 2)"
+          :key="sig"
+          class="max-w-56 truncate rounded-full bg-[#f2f0ea] px-2.5 py-1 text-xs text-[#8b93a0]"
+          :title="sig"
+          >{{ sig }}</span
+        >
+        <!-- 手動切換情境 -->
+        <span class="ml-auto flex gap-1 text-xs">
+          <button
+            type="button"
+            class="rounded-full px-2.5 py-1 transition"
+            :class="override === 'auto' ? 'bg-[#1d2129] text-white' : 'bg-[#f2f0ea] hover:bg-[#e8e6e0]'"
+            @click="override = 'auto'; llmConfirmed = false"
+          >
+            自動
+          </button>
+          <button
+            v-for="sid in SELECTABLE_SCENARIOS"
+            :key="sid"
+            type="button"
+            class="rounded-full px-2.5 py-1 transition"
+            :class="override === sid ? 'bg-[#1d2129] text-white' : 'bg-[#f2f0ea] hover:bg-[#e8e6e0]'"
+            :title="SCENARIOS[sid].note"
+            @click="override = sid; llmConfirmed = false"
+          >
+            {{ SCENARIOS[sid].icon }} {{ SCENARIOS[sid].label }}
+          </button>
+        </span>
+      </div>
+
+      <!-- 輪數 -->
+      <div class="mt-3 flex items-center gap-3 text-[13px] text-[#767e8c]">
+        <span class="shrink-0">對話輪數</span>
+        <input
+          :value="turns"
+          type="range"
+          min="1"
+          max="50"
+          step="1"
+          :disabled="estimate.scenario === 'agent'"
+          class="h-1 flex-1 accent-emerald-500"
+          :class="estimate.scenario === 'agent' ? 'cursor-not-allowed opacity-30' : 'cursor-pointer'"
+          @input="turns = Number(($event.target as HTMLInputElement).value); userSetTurns = true"
+        />
+        <span class="w-12 text-right font-mono text-sm font-semibold tabular-nums text-[#1d2129]">{{ turns }} 輪</span>
+        <span
+          v-if="estimate.scenario === 'agent'"
+          class="rounded-full bg-[#f2f0ea] px-2 py-0.5 text-[11px] text-[#8b93a0]"
+          title="整包工作的消耗由工具呼叫輪數決定，跟對話輪數無關，所以拉桿不影響數據"
+          >整包工作不看輪數</span
+        >
+        <span v-else-if="turns > 1" class="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-700">整段累積</span>
+      </div>
+      <!-- 多輪時的 caching 摘要 -->
+      <p v-if="convSummary && estimate.scenario !== 'agent'" class="mt-1.5 text-xs leading-5 text-[#8b93a0]">
+        整段 ≈ <b class="font-mono text-[#5c626e]">{{ fmtTok(convSummary.totalTokens) }}</b> tokens ·
+        {{ currentModelPricing.name }} 不開 caching
+        <b class="font-mono text-[#c26a54]">{{ fmtCost(convSummary.noCache) }}</b> / 開
+        <b class="font-mono text-emerald-600">{{ fmtCost(convSummary.cache) }}</b>（省
+        {{ convSummary.savePct.toFixed(0) }}%）
+      </p>
+
+      <!-- 大字結論 -->
+      <div class="mt-6">
+        <template v-if="hasText && yourCost">
+          <h1 class="text-[24px] font-bold leading-snug tracking-tight">
+            這個任務每次約
+            <span class="border-b-4 border-emerald-300 font-mono">{{ fmtCost(yourCost.lo) }}<template v-if="yourCost.hi !== yourCost.lo">–{{ fmtCost(yourCost.hi) }}</template></span
+            ><template v-if="bestRow && bestSavePct > 5"
+              >，<br />換
+              {{ bestRow.m.name }} 能省 <span class="border-b-4 border-emerald-300 font-mono">{{ bestSavePct.toFixed(0) }}%</span></template
+            >。
+          </h1>
+          <p class="mt-3 text-sm leading-7 text-[#5c626e]">
+            {{ isLLMRefined ? 'AI 依任務精算' : '依關鍵字規則推估' }}：input
+            {{ estimate.inputRange[0].toLocaleString() }}–{{ estimate.inputRange[1].toLocaleString() }} · output
+            {{ estimate.outputRange[0].toLocaleString() }}–{{ estimate.outputRange[1].toLocaleString() }} tokens<template
+              v-if="estimate.calls[1] > 1"
+            >
+              × {{ estimate.calls[0] }}–{{ estimate.calls[1] }} 次呼叫</template
+            >{{ estimate.reliable ? '' : '；整包工作僅為量級參考' }}。
+          </p>
+        </template>
+        <template v-else>
+          <h1 class="text-[24px] font-bold leading-snug tracking-tight text-[#b3ae9f]">
+            貼上 prompt，<br />馬上知道要花多少。
+          </h1>
+          <p class="mt-3 text-sm leading-7 text-[#99a0ac]">即時 token 計算 · 20 個模型成本對比 · 一鍵壓縮省錢</p>
+        </template>
+      </div>
+
+      <!-- 怎麼省（直列式，跟訂閱者視角交換位置） -->
+      <div class="mt-6 shrink-0">
+        <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c]">怎麼省</p>
+        <ul class="mt-2 divide-y divide-[#e9e6dd] overflow-hidden rounded-xl border border-[#e9e6dd] bg-[#f5f3ed]">
+          <li v-for="t in tips" :key="t.title" class="px-4 py-2.5">
+            <div class="flex items-baseline gap-3">
+              <p class="min-w-0 truncate text-sm font-semibold leading-6">{{ t.title }}</p>
+              <span
+                class="ml-auto shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 font-mono text-xs font-bold tabular-nums text-emerald-700"
+                >{{ t.pct }}</span
+              >
+            </div>
+            <p class="text-[13px] leading-5 text-[#767e8c]">{{ t.desc }}</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 右：成本表 + 怎麼省 -->
+    <section class="flex min-h-0 flex-col lg:col-span-7">
+      <p class="flex flex-wrap items-baseline gap-x-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c]">
+        <span>
+          <button
+            type="button"
+            class="normal-case tracking-normal"
+            :class="unit === 'cost' ? 'font-bold text-[#1d2129]' : 'border-b border-dotted border-[#b3ae9f] text-[#9a9378] hover:text-[#1d2129]'"
+            @click="unit = 'cost'"
+          >
+            各模型成本/次
+          </button>
+          <span class="px-1 text-[#b3ae9f]">·</span>
+          <button
+            type="button"
+            class="normal-case tracking-normal"
+            :class="unit === 'tokens' ? 'font-bold text-[#1d2129]' : 'border-b border-dotted border-[#b3ae9f] text-[#9a9378] hover:text-[#1d2129]'"
+            title="這個任務預估消耗的 token 數（input 依各模型 tokenizer 換算、output 含話多係數）"
+            @click="unit = 'tokens'"
+          >
+            tokens
+          </button>
+        </span>
+        <button
+          type="button"
+          class="font-normal normal-case tracking-normal text-[#767e8c] hover:text-[#1d2129]"
+          @click="pickerOpen = !pickerOpen"
+        >
+          已選 {{ selectedModelIds.length }}/{{ models.length }} · 選擇模型 {{ pickerOpen ? '▴' : '▾' }}
+        </button>
+        <span class="ml-auto font-normal normal-case tracking-normal">官方定價 {{ pricingUpdated }}</span>
+      </p>
+
+      <!-- 模型挑選（收合式） -->
+      <div v-if="pickerOpen" class="mt-2 rounded-lg border border-[#eae7de] bg-[#fdfcf8] p-3">
+        <div v-for="g in providerGroups" :key="g.provider" class="flex flex-wrap items-center gap-1.5 py-1">
+          <span class="w-16 text-[10px] font-semibold uppercase text-[#767e8c]">{{ g.provider }}</span>
+          <button
+            v-for="m in g.items"
+            :key="m.id"
+            type="button"
+            class="rounded-full border px-2.5 py-1 text-xs transition"
+            :class="selectedModelIds.includes(m.id) ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 'border-[#e8e6e0] text-[#767e8c] hover:border-[#b3ae9f]'"
+            @click="toggleModel(m.id)"
+          >
+            {{ m.name }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 欄位標題列（效能放最右、遠離相對條，避免被誤讀成效能條） -->
+      <div class="mt-2 flex items-center gap-3 border-b border-[#e4e1d8] pb-1.5 text-[11px] text-[#8b93a0]">
+        <span class="w-2 shrink-0" />
+        <span class="w-36">模型</span>
+        <span class="min-w-16 flex-1 pl-1">相對{{ unit === 'tokens' ? '用量' : '成本' }}</span>
+        <span class="w-[150px] shrink-0 text-right">{{ unit === 'tokens' ? '預估用量' : '成本/次' }}</span>
+        <span
+          class="w-9 shrink-0 cursor-help text-right"
+          title="效能 = Artificial Analysis Intelligence Index（0-100，≈ 為估算值）"
+          >效能</span
+        >
+        <span class="w-12 shrink-0" />
+      </div>
+      <!-- 模型多時表格內部捲動，不推開下面的內容 -->
+      <ul class="max-h-[52vh] overflow-y-auto">
+        <li v-for="r in rows" :key="r.m.id" class="flex items-center gap-3 border-b border-[#eeece6] py-[8px]">
+          <span class="h-2 w-2 shrink-0 rounded-full" :style="{ background: providerColors[r.m.provider] }" :title="r.m.provider" />
+          <span class="w-36 truncate text-sm" :class="r.m.id === currentModelId ? 'font-semibold' : ''" :title="r.m.name">{{ r.m.name }}</span>
+          <div class="h-1.5 min-w-16 flex-1 rounded-full bg-[#f0eee8]">
+            <div
+              class="h-full rounded-full"
+              :class="r.m.id === currentModelId ? 'bg-[#e8927c]' : 'bg-[#b9b4a6]'"
+              :style="{ width: hasText ? `max(${(r.metric / maxMetric) * 100}%, 4px)` : '0%' }"
+            />
+          </div>
+          <span class="w-[150px] shrink-0 whitespace-nowrap text-right font-mono text-sm tabular-nums" :class="r.m.id === currentModelId ? 'font-bold' : ''" :title="r.assumption">{{ rangeText(r) }}</span>
+          <span class="w-9 shrink-0 text-right font-mono text-xs tabular-nums text-[#99a0ac]" title="Artificial Analysis Intelligence Index">{{ r.m.perf_est ? '≈' : '' }}{{ r.m.perf }}</span>
+          <span class="w-12 shrink-0 text-right text-xs text-[#767e8c]" :class="rowMark(r)?.cls">{{ rowMark(r)?.label ?? '' }}</span>
+        </li>
+        <li v-if="!rows.length" class="py-6 text-center text-xs text-[#99a0ac]">至少選一個模型才能比較成本</li>
+      </ul>
+      <p class="mt-2 text-[11px] leading-5 text-[#8b93a0]">
+        效能 = Artificial Analysis Intelligence Index（≈ 為估算）· 定價為各家官方查證 ·
+        {{ unit === 'tokens' ? 'tokens 已依各模型 tokenizer 與輸出詳簡係數換算' : '成本依上方情境推估，滑鼠停留數字看假設' }}
+      </p>
+
+      <!-- 訂閱者視角（跟怎麼省交換位置；進度條 = 一則佔每日額度） -->
+      <div class="mt-6 shrink-0">
+        <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c]">
+          💳 訂閱者視角 ·
+          <span class="normal-case tracking-normal">{{ currentModelPricing.provider }}</span>（額度為估算）
+        </p>
+        <div
+          v-if="subPlans.length"
+          class="mt-2 divide-y divide-[#e9e6dd] overflow-hidden rounded-xl border border-[#e9e6dd] bg-[#f5f3ed]"
+        >
+          <div v-for="s in subPlans" :key="s.plan.id" class="flex items-center gap-3 px-4 py-2.5">
+            <b class="w-32 truncate text-sm text-[#1d2129]" :title="s.plan.note">{{ s.plan.name }}</b>
+            <span class="w-16 shrink-0 text-xs text-[#8b93a0]">{{ s.plan.price }}</span>
+            <div class="h-1.5 max-w-52 flex-1 rounded-full bg-white/80" :title="`一則約佔每日額度 ${fmtPct(s.pct)}%`">
+              <div
+                class="h-full rounded-full bg-[#3987e5]"
+                :style="{ width: hasText ? `max(${Math.min(s.pct, 100)}%, 3px)` : '0%' }"
+              />
+            </div>
+            <span class="w-20 shrink-0 text-right font-mono text-sm tabular-nums text-[#1d2129]"
+              >{{ hasText ? fmtPct(s.pct) : '—' }}%<span class="text-xs text-[#8b93a0]">/則</span></span
+            >
+            <span class="w-24 shrink-0 text-right text-sm text-[#5c626e]"
+              >約 <b class="font-mono tabular-nums text-[#1d2129]">{{ hasText ? s.q.toLocaleString('en-US') : '—' }}</b> 次/天</span
+            >
+          </div>
+        </div>
+        <p v-else class="mt-2 rounded-xl border border-[#e9e6dd] bg-[#f5f3ed] px-4 py-3 text-sm text-[#5c626e]">
+          {{ currentModelPricing.provider }} 無主流訂閱方案，屬 API 按量計價——看上方每次成本即可。
+        </p>
+      </div>
+    </section>
+  </main>
+</template>

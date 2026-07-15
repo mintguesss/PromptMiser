@@ -1,0 +1,21 @@
+# Node
+node_modules/
+dist/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 環境變數（含 API key，絕不進版控）
+.env
+.env.local
+
+# 編輯器 / 系統
+.vscode/
+.claude/
+.DS_Store
+
+# 內部開發文件，不公開
+promptmiser_spec.md

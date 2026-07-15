@@ -1,0 +1,111 @@
+{
+  "_comment": "訂閱方案每日額度估算。僅為估算，非官方數據，手動維護。providers=該方案涵蓋哪些模型提供商（選了對應模型就關聯到這些方案）。daily_tokens 是「佔額度 %」的 token 分母，daily_messages 是訊息數上限。popular=true 為預設勾選集。",
+  "disclaimer": "僅為估算，非官方數據",
+  "updated": "2026-07-14",
+  "plans": [
+    {
+      "id": "claude-pro",
+      "name": "Claude Pro",
+      "price": "$20/月",
+      "providers": [
+        "Anthropic"
+      ],
+      "tier": "entry",
+      "daily_messages": 45,
+      "daily_tokens": 11500000,
+      "note": "token 額度為使用者實測（2026-07-14）：一個 5 小時視窗 ≈11.5M 等效 tokens（含 cache 折扣），保守以一個活躍時段當每日。訊息數 45/5h 為社群通行估計。官方不公布具體數字",
+      "popular": true
+    },
+    {
+      "id": "claude-max-5x",
+      "name": "Claude Max 5x",
+      "price": "$100/月",
+      "providers": [
+        "Anthropic"
+      ],
+      "tier": "mid",
+      "daily_messages": 225,
+      "daily_tokens": 57500000,
+      "note": "token 額度 = Pro 實測 11.5M × 官方 5 倍倍率換算；同為 5 小時視窗＋每週上限制",
+      "popular": false
+    },
+    {
+      "id": "claude-max-20x",
+      "name": "Claude Max 20x",
+      "price": "$200/月",
+      "providers": [
+        "Anthropic"
+      ],
+      "tier": "high",
+      "daily_messages": 900,
+      "daily_tokens": 230000000,
+      "note": "token 額度 = Pro 實測 11.5M × 官方 20 倍倍率換算；同為 5 小時視窗＋每週上限制",
+      "popular": false
+    },
+    {
+      "id": "chatgpt-plus",
+      "name": "ChatGPT Plus",
+      "price": "$20/月",
+      "providers": [
+        "OpenAI"
+      ],
+      "tier": "entry",
+      "daily_messages": 80,
+      "daily_tokens": 300000,
+      "note": "GPT-5 約每 3 小時 80 則，token 額度為粗估",
+      "popular": true
+    },
+    {
+      "id": "chatgpt-pro",
+      "name": "ChatGPT Pro",
+      "price": "$200/月",
+      "providers": [
+        "OpenAI"
+      ],
+      "tier": "high",
+      "daily_messages": 800,
+      "daily_tokens": 5000000,
+      "note": "近乎無限使用，額度極寬鬆",
+      "popular": false
+    },
+    {
+      "id": "google-ai-pro",
+      "name": "Google AI Pro",
+      "price": "$19.99/月",
+      "providers": [
+        "Google"
+      ],
+      "tier": "entry",
+      "daily_messages": 100,
+      "daily_tokens": 400000,
+      "note": "約 100 次 / 天，token 額度為粗估",
+      "popular": true
+    },
+    {
+      "id": "google-ai-ultra",
+      "name": "Google AI Ultra",
+      "price": "$249.99/月",
+      "providers": [
+        "Google"
+      ],
+      "tier": "high",
+      "daily_messages": 500,
+      "daily_tokens": 2500000,
+      "note": "最高階，額度極寬鬆",
+      "popular": false
+    },
+    {
+      "id": "supergrok",
+      "name": "SuperGrok",
+      "price": "$30/月",
+      "providers": [
+        "xAI"
+      ],
+      "tier": "entry",
+      "daily_messages": 100,
+      "daily_tokens": 500000,
+      "note": "約 100 次 / 天，token 額度為粗估",
+      "popular": false
+    }
+  ]
+}
