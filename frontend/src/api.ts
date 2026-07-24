@@ -1,7 +1,9 @@
 import { models } from './composables/usePricing'
 import type { OptimizeResult } from './types'
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
+// 一律用同網域相對路徑：部署在 Vercel 時前後端同一個網域，
+// 本機開發則由 vite.config.ts 的 proxy 轉給後端（預設 localhost:8000）。
+const API_BASE = ''
 
 // 給 LLM 的模型清單摘要（含提供商，讓「同品牌推薦」挑得出來）
 const availableModels = models.map(
@@ -32,7 +34,7 @@ export async function optimizePrompt(
       }),
     })
   } catch {
-    throw new Error(`連不上後端（${API_BASE}）——請確認後端已啟動，參考 SETUP.md`)
+    throw new Error('連不上後端——本機開發請確認後端已啟動（見 SETUP.md）')
   }
 
   if (!res.ok) {

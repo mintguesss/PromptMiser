@@ -1,0 +1,8 @@
+# Vercel 部署用（Python Function 的相依套件必須放在專案根目錄）。
+# ⚠️ 內容需與 backend/requirements.txt 保持一致；改動時兩邊都要更新。
+# uvicorn 只有本機開發需要，Vercel 自己提供 ASGI 伺服器，故不列入。
+fastapi>=0.110
+pydantic>=2.6
+tiktoken>=0.6
+httpx>=0.27
+python-dotenv>=1.0

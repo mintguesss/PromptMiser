@@ -1,5 +1,5 @@
 {
-  "_comment": "各模型 API 定價（USD / 1M tokens）。手動維護，更新時記得改 updated 日期。popular=true 的模型會是預設勾選集。查證日期 2026-07-11：OpenAI 官方定價頁、Anthropic 官方、Google/xAI/DeepSeek 官方文件與定價追蹤站。 perf = Artificial Analysis Intelligence Index（0-100，2026-07 快照；perf_est=true 為估算值）。 verbosity = 輸出詳簡係數（output/思考 token 相對倍率，乘在成本與 token 消耗的 output 部分）。來源：Artificial Analysis 各模型頁「Intelligence Index 評測總輸出 tokens」除以推理模型中位數 62M（2026-07-14 查證：Sol 70M、Terra 96M、Luna 130M、5.4mini 220M、5.4nano 180M、Fable5 87M、Opus4.8 120M、Gemini3.5Flash 75M、Grok4.3 83M、DSv4Flash 230M、DSv4Pro 180M）。verbosity_est=true 為 AA 無數據（N/A）之估算值。Llama 3.3 70B 為本站 output 校準基準，固定 1.0（AA 實測 3.8M，非推理模型極精簡）。注意：AA 數字多為 max/high 推理檔位在高難度評測的用量，輕量任務會高估思考 token。 Claude Sonnet 5：AA 僅有 Adaptive Reasoning Max Effort 檔位數據（300M → 4.8），非一般使用情境，故取估算值 1.6（est）。",
+  "_comment": "各模型 API 定價（USD / 1M tokens）。手動維護，更新時記得改 updated 日期。popular=true 的模型會是預設勾選集。查證日期 2026-07-11：OpenAI 官方定價頁、Anthropic 官方、Google/xAI/DeepSeek 官方文件與定價追蹤站。 perf = Artificial Analysis Intelligence Index（0-100，2026-07 快照；perf_est=true 為估算值）。 verbosity = 輸出詳簡係數（output/思考 token 相對倍率，乘在成本與 token 消耗的 output 部分）。來源：Artificial Analysis 各模型頁「Intelligence Index 評測總輸出 tokens」除以推理模型中位數 62M（2026-07-14 查證：Sol 70M、Terra 96M、Luna 130M、5.4mini 220M、5.4nano 180M、Fable5 87M、Opus4.8 120M、Gemini3.5Flash 75M、Grok4.3 83M、DSv4Flash 230M、DSv4Pro 180M）。verbosity_est=true 為 AA 無數據（N/A）之估算值。Llama 3.3 70B 為本站 output 校準基準，固定 1.0（AA 實測 3.8M，非推理模型極精簡）。注意：AA 數字多為 max/high 推理檔位在高難度評測的用量，輕量任務會高估思考 token。 Claude Sonnet 5：AA 僅有 Adaptive Reasoning Max Effort 檔位數據（300M → 4.8），非一般使用情境，故取估算值 1.6（est）。 Claude Opus 5（2026-07-24 發布、官網查證）：input $5 / output $25（同 Opus 4.8、Fable 5 的一半）；AA Intelligence Index 61（Max Effort，現最高）；輸出量 100M ÷ 62M 中位數 ≈ verbosity 1.6。",
   "updated": "2026-07-11",
   "providers": [
     "OpenAI",
@@ -92,6 +92,20 @@
       "perf": 38,
       "perf_est": false,
       "verbosity": 2.9,
+      "verbosity_est": false
+    },
+    {
+      "id": "claude-opus-5",
+      "name": "Claude Opus 5",
+      "provider": "Anthropic",
+      "encoding": "o200k_base",
+      "input_per_1m": 5.0,
+      "output_per_1m": 25.0,
+      "free": false,
+      "popular": true,
+      "perf": 61,
+      "perf_est": false,
+      "verbosity": 1.6,
       "verbosity_est": false
     },
     {

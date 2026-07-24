@@ -1,0 +1,3 @@
+# tiktoken 的編碼快取檔必須逐位元組保留原樣，
+# 若被 git 做換行轉換，tiktoken 的雜湊驗證會失敗而改回上網下載。
+tiktoken_cache/** binary

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "cd frontend && npm install && npm run build",
+  "outputDirectory": "frontend/dist",
+  "functions": {
+    "api/optimize.py": {
+      "maxDuration": 60,
+      "excludeFiles": "{frontend/**,backend/.venv/**,**/__pycache__/**,**/*.pyc}"
+    }
+  }
+}

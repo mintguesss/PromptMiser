@@ -91,29 +91,42 @@ npm run dev
 → key 貼錯或已被撤銷，去 Groq console 重新產生一把。
 
 **Port 被占用（8000 或 5173）**
-→ 換 port：後端 `--port 8001`（同時改前端 `.env` 的 `VITE_API_BASE`）；前端 `npm run dev -- --port 5174`（同時把後端 `.env` 的 `CORS_ORIGINS` 改成對應網址）。
+→ 換 port：後端 `--port 8001`（同時在 `frontend/.env` 設 `VITE_API_BASE=http://localhost:8001`）；前端 `npm run dev -- --port 5174`。
 
 **`npm run dev` 說 Node 版本不支援**
 → 升級到 Node 20.19+ 或 22+（本專案的 Vite 已固定在 v6，Node 20.x 都能跑）。
 
-## 7. 部署（選用）
+## 7. 部署到 Vercel
 
-### 後端 → Railway
+前端與後端**放在同一個 Vercel 專案、同一個網域**：靜態網站由 CDN 提供，`/api/optimize`
+交給 Python Serverless Function（`api/optimize.py`，載入的是 `backend/app` 的同一份程式碼）。
+因為同網域，不需要設定 CORS，也沒有另一個後端網址要維護。
+
+### 步驟
 
 1. 把專案推上 GitHub
-2. https://railway.app → **New Project** → **Deploy from GitHub repo**，Root Directory 設 `backend`（有 Dockerfile 會自動偵測）
-3. 在 **Variables** 加上：
-   - `GROQ_API_KEY`＝你的 key
-   - `CORS_ORIGINS`＝你的前端網址（例如 `https://prompt-miser.vercel.app`）
-4. 部署完成後記下網址（例如 `https://prompt-miser-production.up.railway.app`）
+2. https://vercel.com → **Add New Project** → 選這個 repo
+3. **Root Directory 保持在專案根目錄，不要指到 `frontend`**
+   （建置指令與輸出目錄已寫在 `vercel.json`，畫面上留空即可）
+4. 展開 **Environment Variables**，加上：
+   - `GROQ_API_KEY` ＝ 你的 Groq key（`gsk_` 開頭）
+   - 選填 `GROQ_MODEL`（預設 `llama-3.3-70b-versatile`）
+5. **Deploy**，等 1-2 分鐘
 
-### 前端 → Vercel
+### 部署後檢查
 
-1. https://vercel.com → **Add New Project** → 選同一個 GitHub repo
-2. Root Directory 設 `frontend`（Framework 會自動偵測為 Vite）
-3. 在 **Environment Variables** 加上 `VITE_API_BASE`＝Railway 後端網址
-4. Deploy
+- 開 `https://<你的網址>/api/health` → 應該看到 `{"status":"ok"}`
+- 回首頁貼一段 prompt 按「壓縮 + 省錢建議」→ 有結果就成功了
+- 若壓縮失敗，多半是 `GROQ_API_KEY` 沒設或設錯：到 Vercel 專案的
+  **Settings → Environment Variables** 確認，改完要 **Redeploy** 才會生效
 
-### 防休眠（選用）
+### 相關設定檔
 
-免費方案的後端閒置會休眠，冷啟動要等幾秒。可以用 https://uptimerobot.com 建一個 monitor，每 5 分鐘打一次後端的 `/health`。
+| 檔案 | 作用 |
+|------|------|
+| `vercel.json` | 建置指令、輸出目錄、Function 逾時（60 秒） |
+| `api/optimize.py` | Serverless Function 進入點，載入 `backend/app` |
+| `requirements.txt`（根目錄） | Function 的 Python 相依套件，需與 `backend/requirements.txt` 一致 |
+| `tiktoken_cache/` | 預先下載的 tiktoken 編碼檔，避免冷啟動時上網抓 |
+
+> 後端也保留了 `backend/Dockerfile`，若日後想改成獨立部署（Railway / Render / Fly.io）仍然可用。

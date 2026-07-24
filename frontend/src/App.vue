@@ -19,9 +19,11 @@ const design = ref<Design>(
 const prompt = ref('')
 
 // 還原上次選的模型；設定檔改版後 id 可能不存在，要驗證
+const DEFAULT_MODEL = 'claude-opus-5'
 const storedModel = localStorage.getItem('promptmiser.currentModel')
+const fallbackModel = models.some((m) => m.id === DEFAULT_MODEL) ? DEFAULT_MODEL : models[0].id
 const currentModel = ref(
-  storedModel && models.some((m) => m.id === storedModel) ? storedModel : models[0].id,
+  storedModel && models.some((m) => m.id === storedModel) ? storedModel : fallbackModel,
 )
 watch(currentModel, (v) => localStorage.setItem('promptmiser.currentModel', v))
 
