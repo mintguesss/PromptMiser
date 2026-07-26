@@ -32,6 +32,9 @@ export interface OptimizeResult {
   task_type: string
   consumption_profile: ConsumptionProfile
   usage_estimate: UsageEstimate | null
+  /** 完成這個任務至少需要的模型效能（對照 AA Intelligence Index）；0 = LLM 沒判定 */
+  required_perf: number
+  required_perf_reason: string
   original_tokens: number
   compressed_prompt: string
   compressed_tokens: number

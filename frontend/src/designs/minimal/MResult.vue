@@ -108,6 +108,25 @@ function modelTok(m: ModelPricing): number {
   return (ti + to) * calls
 }
 
+// ---- 勝任度：LLM 判定「這個任務至少需要多強的模型」，用來擋掉「便宜但做不來」的推薦 ----
+const requiredPerf = computed(() => props.result.required_perf || 0)
+interface Capability {
+  level: 'ok' | 'edge' | 'low'
+  label: string
+  cls: string
+}
+function capability(m: ModelPricing): Capability | null {
+  const req = requiredPerf.value
+  if (req <= 0) return null // LLM 沒判定就不顯示，不亂猜
+  if (m.perf >= req) return { level: 'ok', label: '做得來', cls: 'text-emerald-600' }
+  if (m.perf >= req - 8) return { level: 'edge', label: '可能勉強', cls: 'text-[#b07d2b]' }
+  return { level: 'low', label: '恐怕不夠', cls: 'text-[#c26a54]' }
+}
+/** 能不能勝任這個任務（LLM 沒判定時一律視為可以，不擋推薦） */
+function canDo(m: ModelPricing): boolean {
+  return requiredPerf.value <= 0 || m.perf >= requiredPerf.value
+}
+
 interface BarRow {
   m: ModelPricing
   c: number
@@ -117,19 +136,22 @@ interface BarRow {
   hot?: boolean
   best?: boolean
   label: string
+  cap: Capability | null
 }
 const compare = computed(() => {
+  // 只推薦「做得來」的模型——便宜但效能不足的不該出現在建議裡
   const rank = (list: ModelPricing[]) =>
     list
-      .filter((m) => !m.free)
+      .filter((m) => !m.free && canDo(m))
       .map((m) => ({ m, c: modelCost(m) }))
       .sort((a, b) => a.c - b.c)[0] ?? null
   const yourCost = modelCost(props.modelPricing)
   const bestSel = rank(models.filter((m) => selectedIds.value.includes(m.id)))
   const bestAll = rank(models)
+  // 免費模型同樣要能勝任才提，否則等於叫使用者去用做不出結果的模型
   const free =
-    models.filter((m) => m.free).find((m) => selectedIds.value.includes(m.id)) ??
-    models.find((m) => m.free) ??
+    models.filter((m) => m.free && canDo(m)).find((m) => selectedIds.value.includes(m.id)) ??
+    models.find((m) => m.free && canDo(m)) ??
     null
 
   const cands: { m: ModelPricing; c: number; scope: 'sel' | 'all' }[] = []
@@ -155,6 +177,7 @@ const compare = computed(() => {
       bar: (yourVal / base) * 100,
       hot: true,
       label: '你用的',
+      cap: capability(props.modelPricing),
     },
     ...cands.map(
       (e): BarRow => ({
@@ -165,6 +188,7 @@ const compare = computed(() => {
         bar: (metric(e.m, e.c) / base) * 100,
         best: e === cands[cands.length - 1],
         label: hasBoth ? (e.scope === 'sel' ? '勾選中' : '全站最省') : '最省',
+        cap: capability(e.m),
       }),
     ),
   ]
@@ -247,7 +271,7 @@ const sugCards = computed(() => {
 
 <template>
   <main
-    class="mx-auto grid min-h-0 w-full max-w-[1400px] flex-1 grid-cols-1 gap-y-6 px-8 py-5 lg:grid-cols-12 lg:overflow-y-auto"
+    class="mx-auto grid min-h-0 w-full max-w-[1400px] flex-1 grid-cols-1 gap-y-6 px-4 py-4 sm:px-8 sm:py-5 lg:grid-cols-12 lg:overflow-y-auto"
   >
     <!-- ═ 左：壓縮成果 ═ -->
     <section class="flex min-h-0 flex-col lg:col-span-5 lg:pr-8">
@@ -328,23 +352,52 @@ const sugCards = computed(() => {
         </span>
         <span v-if="rep.precise" class="ml-auto font-normal normal-case tracking-normal text-[#8b93a0]">🤖 AI 精算</span>
       </p>
+      <!-- 這個任務需要多強的模型（換模型不能只看價格） -->
+      <p v-if="requiredPerf > 0" class="mt-1 text-[13px] leading-5 text-[#767e8c]">
+        這個任務大約需要效能 <b class="font-mono text-[#1d2129]">{{ requiredPerf }}</b> 以上<template
+          v-if="result.required_perf_reason"
+        >：{{ result.required_perf_reason }}</template
+        >
+      </p>
       <template v-if="compare.hasCands">
         <ul class="mt-1">
-          <li v-for="r in compare.rows" :key="r.m.id" class="flex items-center gap-3 border-b border-[#eeece6] py-2.5">
-            <span class="w-44 truncate text-sm" :class="r.hot ? 'font-semibold' : ''">{{ r.m.name }}</span>
-            <div class="h-2 flex-1 rounded-full bg-[#f0eee8]">
-              <div
-                class="h-full rounded-full"
-                :class="r.hot ? 'bg-[#e8927c]' : r.best ? 'bg-emerald-400' : 'bg-[#b9b4a6]'"
-                :style="{ width: `max(${r.bar}%, 4px)` }"
-              />
+          <li v-for="r in compare.rows" :key="r.m.id" class="border-b border-[#eeece6] py-2.5">
+            <div class="flex items-center gap-2.5 sm:gap-3">
+              <span class="min-w-0 flex-1 truncate text-sm sm:w-44 sm:flex-none" :class="r.hot ? 'font-semibold' : ''">{{ r.m.name }}</span>
+              <div class="hidden h-2 flex-1 rounded-full bg-[#f0eee8] sm:block">
+                <div
+                  class="h-full rounded-full"
+                  :class="r.hot ? 'bg-[#e8927c]' : r.best ? 'bg-emerald-400' : 'bg-[#b9b4a6]'"
+                  :style="{ width: `max(${r.bar}%, 4px)` }"
+                />
+              </div>
+              <span
+                class="shrink-0 whitespace-nowrap text-right font-mono text-[13px] tabular-nums sm:w-[104px] sm:text-sm"
+                :class="r.hot ? 'font-bold' : r.best ? 'font-bold text-emerald-600' : ''"
+                >{{ unit === 'tokens' ? fmtTokDisp(r.tok, r.tokApprox) : fmtUSD(r.c) }}</span
+              >
+              <!-- 勝任度：便宜但做不來的模型要看得出來 -->
+              <span
+                v-if="r.cap"
+                class="hidden w-20 shrink-0 text-right text-xs sm:block"
+                :class="r.cap.cls"
+                :title="`效能 ${r.m.perf_est ? '≈' : ''}${r.m.perf}，這個任務約需 ${requiredPerf}`"
+                >{{ r.cap.label }}</span
+              >
+              <span class="hidden w-16 shrink-0 text-right text-xs sm:block" :class="r.best ? 'font-semibold text-emerald-600' : 'text-[#767e8c]'">{{ r.label }}</span>
             </div>
-            <span
-              class="w-[104px] shrink-0 text-right font-mono text-sm tabular-nums"
-              :class="r.hot ? 'font-bold' : r.best ? 'font-bold text-emerald-600' : ''"
-              >{{ unit === 'tokens' ? fmtTokDisp(r.tok, r.tokApprox) : fmtUSD(r.c) }}</span
-            >
-            <span class="w-16 shrink-0 text-right text-xs" :class="r.best ? 'font-semibold text-emerald-600' : 'text-[#767e8c]'">{{ r.label }}</span>
+            <!-- 手機專用第二行：bar + 勝任度 + 標記 -->
+            <div class="mt-1.5 flex items-center gap-2 sm:hidden">
+              <div class="h-2 min-w-10 flex-1 rounded-full bg-[#f0eee8]">
+                <div
+                  class="h-full rounded-full"
+                  :class="r.hot ? 'bg-[#e8927c]' : r.best ? 'bg-emerald-400' : 'bg-[#b9b4a6]'"
+                  :style="{ width: `max(${r.bar}%, 4px)` }"
+                />
+              </div>
+              <span v-if="r.cap" class="shrink-0 text-[11px]" :class="r.cap.cls">{{ r.cap.label }}</span>
+              <span class="shrink-0 text-[11px]" :class="r.best ? 'font-semibold text-emerald-600' : 'text-[#767e8c]'">{{ r.label }}</span>
+            </div>
           </li>
         </ul>
         <p v-if="compare.rec && unit === 'tokens'" class="mt-2 text-sm leading-6 text-[#5c626e]">
@@ -359,12 +412,20 @@ const sugCards = computed(() => {
         >
           ⭐ 同樣這個任務，改用 <b class="text-[#1d2129]">{{ compare.rec.m.name }}</b> 每次能省
           <b class="font-mono text-base text-emerald-700">{{ compare.recSave.toFixed(0) }}%</b>
+          <span v-if="requiredPerf > 0" class="text-[#767e8c]"
+            >（效能 {{ compare.rec.m.perf_est ? '≈' : '' }}{{ compare.rec.m.perf }}，這個任務做得來）</span
+          >
           <span v-if="!compare.recInSel" class="text-[#767e8c]">（未在比較清單，可在分析頁勾選）</span>
           <span v-if="compare.free" class="text-[#767e8c]">·「{{ compare.free.name }}」還完全免費</span>
         </p>
       </template>
       <p v-else class="mt-2 text-sm leading-6 text-[#5c626e]">
-        ✓ 你用的 <b>{{ modelPricing.name }}</b> 已是最省<span v-if="compare.free" class="text-[#8b93a0]">·「{{ compare.free.name }}」還完全免費</span>
+        ✓ 你用的 <b>{{ modelPricing.name }}</b>
+        {{ requiredPerf > 0 ? '已經是做得來這個任務的模型裡最省的' : '已是最省' }}——更便宜的模型效能不足，換過去可能做不好。<span
+          v-if="compare.free"
+          class="text-[#8b93a0]"
+          >「{{ compare.free.name }}」是唯一免費又做得來的選擇。</span
+        >
       </p>
 
       <p class="mt-5 shrink-0 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c]">
@@ -410,16 +471,16 @@ const sugCards = computed(() => {
 
         <!-- 訂閱者視角 -->
         <div v-if="subPlans.length" class="mt-3 divide-y divide-[#e9e6dd] overflow-hidden rounded-xl border border-[#e9e6dd] bg-[#f5f3ed]">
-          <div v-for="s in subPlans" :key="s.plan.id" class="flex items-center gap-3 px-4 py-2">
-            <b class="w-32 truncate text-sm text-[#1d2129]" :title="s.plan.note">💳 {{ s.plan.name }}</b>
-            <span class="w-16 shrink-0 text-xs text-[#8b93a0]">{{ s.plan.price }}</span>
-            <div class="h-1.5 max-w-52 flex-1 rounded-full bg-white/80" :title="`一則約佔每日額度 ${fmtPct(s.pct)}%`">
+          <div v-for="s in subPlans" :key="s.plan.id" class="flex items-center gap-2.5 px-3 py-2 sm:gap-3 sm:px-4">
+            <b class="min-w-0 flex-1 truncate text-sm text-[#1d2129] sm:w-32 sm:flex-none" :title="s.plan.note">💳 {{ s.plan.name }}</b>
+            <span class="hidden shrink-0 text-xs text-[#8b93a0] sm:block sm:w-16">{{ s.plan.price }}</span>
+            <div class="hidden h-1.5 max-w-52 flex-1 rounded-full bg-white/80 sm:block" :title="`一則約佔每日額度 ${fmtPct(s.pct)}%`">
               <div class="h-full rounded-full bg-[#3987e5]" :style="{ width: `max(${Math.min(s.pct, 100)}%, 3px)` }" />
             </div>
-            <span class="w-20 shrink-0 text-right font-mono text-sm tabular-nums text-[#1d2129]"
+            <span class="shrink-0 text-right font-mono text-[13px] tabular-nums text-[#1d2129] sm:w-20 sm:text-sm"
               >{{ fmtPct(s.pct) }}<span class="text-xs text-[#8b93a0]">%/則</span></span
             >
-            <span class="w-24 shrink-0 text-right text-sm text-[#5c626e]"
+            <span class="shrink-0 whitespace-nowrap text-right text-[13px] text-[#5c626e] sm:w-24 sm:text-sm"
               >約 <b class="font-mono tabular-nums text-[#1d2129]">{{ s.q.toLocaleString('en-US') }}</b> 次/天</span
             >
           </div>

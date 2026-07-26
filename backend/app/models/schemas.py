@@ -49,6 +49,10 @@ class OptimizeResponse(BaseModel):
     task_type: str
     consumption_profile: Literal["single", "search", "conversation", "agent"] = "single"
     usage_estimate: Optional[UsageEstimate] = None
+    # 完成這個任務至少需要的模型效能門檻（對照 Artificial Analysis Intelligence Index）。
+    # 0 = LLM 沒給，前端就不顯示勝任度。
+    required_perf: int = 0
+    required_perf_reason: str = ""
     original_tokens: int
     compressed_prompt: str
     compressed_tokens: int

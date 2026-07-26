@@ -39,11 +39,13 @@ const currentModelPricing = computed(
   <div class="flex min-h-screen flex-col bg-[#faf9f6] font-sans text-[#1d2129] lg:h-screen lg:overflow-hidden">
     <!-- 頂欄：身分 + 分頁 + 模型 + 主行動 -->
     <header class="shrink-0 border-b border-[#e8e6e0]">
-      <div class="mx-auto flex max-w-[1400px] flex-wrap items-center gap-x-8 gap-y-2 px-8 py-3">
-        <span class="flex items-center gap-2 text-sm font-bold tracking-tight"
+      <div
+        class="mx-auto flex max-w-[1400px] flex-wrap items-center gap-x-6 gap-y-2.5 px-4 py-2.5 sm:px-8 sm:py-3"
+      >
+        <span class="flex shrink-0 items-center gap-2 text-sm font-bold tracking-tight"
           ><span class="text-lg">⛏️</span>PromptMiser</span
         >
-        <nav class="flex gap-6 text-[13px]">
+        <nav class="flex shrink-0 gap-5 text-[13px] sm:gap-6">
           <button
             type="button"
             class="border-b-2 pb-0.5 transition"
@@ -69,12 +71,13 @@ const currentModelPricing = computed(
             >
           </button>
         </nav>
-        <div class="ml-auto flex items-center gap-3">
-          <label class="flex items-center gap-1.5 text-xs text-[#767e8c]">
-            你用
+        <!-- 手機：模型選單與主按鈕獨立成一列（避免擠成兩行 + 名稱被截斷） -->
+        <div class="ml-auto flex w-full items-center gap-2 sm:w-auto sm:gap-3">
+          <label class="flex min-w-0 flex-1 items-center gap-1.5 text-xs text-[#767e8c] sm:flex-none">
+            <span class="hidden shrink-0 sm:inline">你用</span>
             <select
               v-model="currentModel"
-              class="max-w-44 cursor-pointer rounded-lg border border-[#e0ddd4] bg-white px-2 py-1.5 text-xs text-[#1d2129] focus:outline-emerald-400"
+              class="min-w-0 flex-1 cursor-pointer rounded-lg border border-[#e0ddd4] bg-white px-2 py-1.5 text-xs text-[#1d2129] focus:outline-emerald-400 sm:max-w-44 sm:flex-none"
             >
               <optgroup v-for="g in modelGroups" :key="g.provider" :label="g.provider">
                 <option v-for="m in g.items" :key="m.id" :value="m.id">{{ m.name }}</option>
@@ -83,15 +86,16 @@ const currentModelPricing = computed(
           </label>
           <button
             type="button"
-            class="rounded-full bg-[#1d2129] px-5 py-2 text-xs font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-40"
+            class="shrink-0 whitespace-nowrap rounded-full bg-[#1d2129] px-4 py-2 text-xs font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-40 sm:px-5"
             :disabled="loading || !prompt.trim()"
             @click="emit('optimize')"
           >
-            {{ loading ? '分析中…' : '壓縮 + 省錢建議 →' }}
+            <span class="sm:hidden">{{ loading ? '分析中…' : '壓縮 ⚡' }}</span>
+            <span class="hidden sm:inline">{{ loading ? '分析中…' : '壓縮 + 省錢建議 →' }}</span>
           </button>
         </div>
       </div>
-      <p v-if="error" class="border-t border-[#f3d9d3] bg-[#fdf3f1] px-8 py-2 text-xs text-[#c26a54]">
+      <p v-if="error" class="border-t border-[#f3d9d3] bg-[#fdf3f1] px-4 py-2 text-xs text-[#c26a54] sm:px-8">
         ⚠️ {{ error }}
       </p>
     </header>

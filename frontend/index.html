@@ -2,13 +2,23 @@
 <html lang="zh-Hant">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover：安裝成 App 後可用 safe-area 避開瀏海 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <link
       rel="icon"
       href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⛏️</text></svg>"
     />
     <meta name="description" content="貼上 prompt 就能看到各模型的成本、一鍵壓縮省 token、還能拿到針對你的任務的省錢建議。" />
     <title>PromptMiser — Prompt 成本分析與壓縮工具</title>
+
+    <!-- PWA：Android / Chrome -->
+    <meta name="theme-color" content="#faf9f6" />
+    <!-- PWA：iOS（Safari 不完全支援 manifest，需要另外給這幾個） -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="PromptMiser" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -16,7 +26,15 @@
       rel="stylesheet"
     />
     <style>
-      html { background-color: #26262c; }
+      /* 與極簡版底色一致，避免載入瞬間閃一下深色 */
+      html {
+        background-color: #faf9f6;
+      }
+      /* 安裝成 App 後避開瀏海與底部手勢條 */
+      body {
+        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+          env(safe-area-inset-left);
+      }
     </style>
   </head>
   <body>

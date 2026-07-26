@@ -42,6 +42,10 @@ def _parse_model_pick(raw: object) -> Optional[ModelPick]:
     if not isinstance(raw, dict):
         return None
     model = str(raw.get("model") or "").strip()
+    # 模型清單是用「提供商｜名稱｜定價…」的格式給 LLM 的，它有時會整串複製回來，
+    # 這裡把提供商前綴與後面的定價欄位切掉，只留模型名稱。
+    if "｜" in model:
+        model = model.split("｜")[1].strip() if len(model.split("｜")) > 1 else model
     if not model:
         return None
     try:
@@ -114,10 +118,20 @@ async def optimize(req: OptimizeRequest) -> OptimizeResponse:
     if profile not in ("single", "search", "conversation", "agent"):
         profile = "single"
 
+    # 任務所需的模型效能門檻（0-100）；超出範圍或給不出來就當作沒有
+    try:
+        required_perf = int(float(result.get("required_perf") or 0))
+    except (TypeError, ValueError):
+        required_perf = 0
+    if not 0 <= required_perf <= 100:
+        required_perf = 0
+
     return OptimizeResponse(
         task_type=str(result.get("task_type") or "一般任務"),
         consumption_profile=profile,  # type: ignore[arg-type]
         usage_estimate=_parse_usage_estimate(result.get("usage_estimate")),
+        required_perf=required_perf,
+        required_perf_reason=str(result.get("required_perf_reason") or "").strip(),
         original_tokens=original_tokens,
         compressed_prompt=compressed,
         compressed_tokens=compressed_tokens,
