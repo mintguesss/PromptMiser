@@ -218,6 +218,15 @@ const subPlans = computed(() => {
     })
 })
 
+// 手機版：建議卡預設只顯示前兩張（模型推薦），其餘收起來，避免整頁太長
+const isMobile = ref(false)
+if (typeof window !== 'undefined' && window.matchMedia) {
+  const mq = window.matchMedia('(max-width: 639px)')
+  isMobile.value = mq.matches
+  mq.addEventListener('change', (e) => (isMobile.value = e.matches))
+}
+const showAllTips = ref(false)
+
 // diff / 複製
 const copied = ref(false)
 const beforeSegments = computed<DiffSegment[]>(() => props.result.diff.filter((s) => s.type !== 'add'))
@@ -267,15 +276,19 @@ const sugCards = computed(() => {
   for (const s of r.suggestions) cards.push({ icon: s.icon, title: s.title, desc: s.description, pct: s.estimated_saving_pct })
   return cards.slice(0, 4)
 })
+const visibleTips = computed(() =>
+  isMobile.value && !showAllTips.value ? sugCards.value.slice(0, 2) : sugCards.value,
+)
+const hiddenTipCount = computed(() => sugCards.value.length - visibleTips.value.length)
 </script>
 
 <template>
   <main
-    class="mx-auto grid min-h-0 w-full max-w-[1400px] flex-1 grid-cols-1 gap-y-6 px-4 py-4 sm:px-8 sm:py-5 lg:grid-cols-12 lg:overflow-y-auto"
+    class="mx-auto grid min-h-0 w-full max-w-[1400px] flex-1 grid-cols-1 gap-y-5 px-4 py-3.5 sm:gap-y-6 sm:px-8 sm:py-5 lg:grid-cols-12 lg:overflow-y-auto"
   >
     <!-- ═ 左：壓縮成果 ═ -->
     <section class="flex min-h-0 flex-col lg:col-span-5 lg:pr-8">
-      <h1 class="text-xl font-bold leading-snug tracking-tight">
+      <h1 class="text-[17px] font-bold leading-snug tracking-tight sm:text-xl">
         <template v-if="lowCompress">這段 prompt 已經夠精簡，沒什麼好壓的。</template>
         <template v-else-if="realSave.pct < 5"
           >字省了 <span class="font-mono text-emerald-600">{{ result.reduction_pct }}%</span>，錢只省
@@ -286,7 +299,7 @@ const sugCards = computed(() => {
           <span class="font-mono text-emerald-600">{{ realSaveText }}%</span>。</template
         >
       </h1>
-      <p class="mt-1.5 text-sm leading-6 text-[#5c626e]">
+      <p class="mt-1.5 text-[13px] leading-6 text-[#5c626e] sm:text-sm">
         {{ turns > 1 && !isAgent ? `這種問題來回 ${turns} 輪，` : '跑一次' }}約
         <b class="font-mono text-[#1d2129]">{{ fmtUSD(realSave.after) }}</b>
         <span v-if="rep.precise" class="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">🤖 AI 精算</span>
@@ -298,7 +311,7 @@ const sugCards = computed(() => {
         <p class="flex shrink-0 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c]">
           壓縮前 <span class="ml-auto font-mono normal-case tracking-normal">{{ result.original_tokens.toLocaleString('en-US') }} tokens</span>
         </p>
-        <div class="mt-1.5 min-h-24 flex-1 overflow-y-auto whitespace-pre-wrap break-words rounded-lg border border-[#eae7de] bg-[#fdfcf8] p-3.5 font-mono text-[13px] leading-6 text-[#3c4250]">
+        <div class="mt-1.5 max-h-32 min-h-16 flex-1 overflow-y-auto sm:max-h-none sm:min-h-24 whitespace-pre-wrap break-words rounded-lg border border-[#eae7de] bg-[#fdfcf8] p-3.5 font-mono text-[13px] leading-6 text-[#3c4250]">
           <template v-for="(s, i) in beforeSegments" :key="i">
             <del v-if="s.type === 'delete'" class="rounded bg-[#fbe9e4] text-[#c26a54] no-underline">{{ s.text }}</del>
             <span v-else>{{ s.text }}</span>
@@ -315,7 +328,7 @@ const sugCards = computed(() => {
             {{ copied ? '✓ 已複製' : '📋 複製' }}
           </button>
         </p>
-        <div class="mt-1.5 min-h-24 flex-1 overflow-y-auto whitespace-pre-wrap break-words rounded-lg border border-emerald-200/70 bg-[#fdfcf8] p-3.5 font-mono text-[13px] leading-6 text-[#3c4250]">
+        <div class="mt-1.5 max-h-32 min-h-16 flex-1 overflow-y-auto sm:max-h-none sm:min-h-24 whitespace-pre-wrap break-words rounded-lg border border-emerald-200/70 bg-[#fdfcf8] p-3.5 font-mono text-[13px] leading-6 text-[#3c4250]">
           <template v-for="(s, i) in afterSegments" :key="i">
             <ins v-if="s.type === 'add'" class="rounded bg-emerald-50 text-emerald-700 no-underline">{{ s.text }}</ins>
             <span v-else>{{ s.text }}</span>
@@ -361,43 +374,34 @@ const sugCards = computed(() => {
       </p>
       <template v-if="compare.hasCands">
         <ul class="mt-1">
-          <li v-for="r in compare.rows" :key="r.m.id" class="border-b border-[#eeece6] py-2.5">
-            <div class="flex items-center gap-2.5 sm:gap-3">
-              <span class="min-w-0 flex-1 truncate text-sm sm:w-44 sm:flex-none" :class="r.hot ? 'font-semibold' : ''">{{ r.m.name }}</span>
-              <div class="hidden h-2 flex-1 rounded-full bg-[#f0eee8] sm:block">
-                <div
-                  class="h-full rounded-full"
-                  :class="r.hot ? 'bg-[#e8927c]' : r.best ? 'bg-emerald-400' : 'bg-[#b9b4a6]'"
-                  :style="{ width: `max(${r.bar}%, 4px)` }"
-                />
-              </div>
-              <span
-                class="shrink-0 whitespace-nowrap text-right font-mono text-[13px] tabular-nums sm:w-[104px] sm:text-sm"
-                :class="r.hot ? 'font-bold' : r.best ? 'font-bold text-emerald-600' : ''"
-                >{{ unit === 'tokens' ? fmtTokDisp(r.tok, r.tokApprox) : fmtUSD(r.c) }}</span
-              >
-              <!-- 勝任度：便宜但做不來的模型要看得出來 -->
-              <span
-                v-if="r.cap"
-                class="hidden w-20 shrink-0 text-right text-xs sm:block"
-                :class="r.cap.cls"
-                :title="`效能 ${r.m.perf_est ? '≈' : ''}${r.m.perf}，這個任務約需 ${requiredPerf}`"
-                >{{ r.cap.label }}</span
-              >
-              <span class="hidden w-16 shrink-0 text-right text-xs sm:block" :class="r.best ? 'font-semibold text-emerald-600' : 'text-[#767e8c]'">{{ r.label }}</span>
+          <!-- 手機一列一行，跟成本表一致 -->
+          <li
+            v-for="r in compare.rows"
+            :key="r.m.id"
+            class="flex items-center gap-2 border-b border-[#eeece6] py-2 sm:gap-3 sm:py-2.5"
+          >
+            <span class="min-w-0 flex-1 truncate text-[13px] sm:w-44 sm:flex-none sm:text-sm" :class="r.hot ? 'font-semibold' : ''">{{ r.m.name }}</span>
+            <div class="hidden h-2 flex-1 rounded-full bg-[#f0eee8] sm:block">
+              <div
+                class="h-full rounded-full"
+                :class="r.hot ? 'bg-[#e8927c]' : r.best ? 'bg-emerald-400' : 'bg-[#b9b4a6]'"
+                :style="{ width: `max(${r.bar}%, 4px)` }"
+              />
             </div>
-            <!-- 手機專用第二行：bar + 勝任度 + 標記 -->
-            <div class="mt-1.5 flex items-center gap-2 sm:hidden">
-              <div class="h-2 min-w-10 flex-1 rounded-full bg-[#f0eee8]">
-                <div
-                  class="h-full rounded-full"
-                  :class="r.hot ? 'bg-[#e8927c]' : r.best ? 'bg-emerald-400' : 'bg-[#b9b4a6]'"
-                  :style="{ width: `max(${r.bar}%, 4px)` }"
-                />
-              </div>
-              <span v-if="r.cap" class="shrink-0 text-[11px]" :class="r.cap.cls">{{ r.cap.label }}</span>
-              <span class="shrink-0 text-[11px]" :class="r.best ? 'font-semibold text-emerald-600' : 'text-[#767e8c]'">{{ r.label }}</span>
-            </div>
+            <span
+              class="shrink-0 whitespace-nowrap text-right font-mono text-[12.5px] tabular-nums sm:w-[104px] sm:text-sm"
+              :class="r.hot ? 'font-bold' : r.best ? 'font-bold text-emerald-600' : ''"
+              >{{ unit === 'tokens' ? fmtTokDisp(r.tok, r.tokApprox) : fmtUSD(r.c) }}</span
+            >
+            <!-- 勝任度：便宜但做不來的模型要看得出來 -->
+            <span
+              v-if="r.cap"
+              class="shrink-0 text-right text-[10px] sm:w-20 sm:text-xs"
+              :class="r.cap.cls"
+              :title="`效能 ${r.m.perf_est ? '≈' : ''}${r.m.perf}，這個任務約需 ${requiredPerf}`"
+              >{{ r.cap.label }}</span
+            >
+            <span class="shrink-0 text-right text-[10px] sm:w-16 sm:text-xs" :class="r.best ? 'font-semibold text-emerald-600' : 'text-[#767e8c]'">{{ r.label }}</span>
           </li>
         </ul>
         <p v-if="compare.rec && unit === 'tokens'" class="mt-2 text-sm leading-6 text-[#5c626e]">
@@ -408,7 +412,7 @@ const sugCards = computed(() => {
         <!-- 最重要的一句：做成重點框，整頁的視覺焦點 -->
         <p
           v-else-if="compare.rec"
-          class="mt-2.5 rounded-xl border border-emerald-200/70 bg-emerald-50/70 px-4 py-2.5 text-sm leading-6 text-[#3c4250]"
+          class="mt-2.5 rounded-xl border border-emerald-200/70 bg-emerald-50/70 px-3 py-2 text-[13px] leading-6 text-[#3c4250] sm:px-4 sm:py-2.5 sm:text-sm"
         >
           ⭐ 同樣這個任務，改用 <b class="text-[#1d2129]">{{ compare.rec.m.name }}</b> 每次能省
           <b class="font-mono text-base text-emerald-700">{{ compare.recSave.toFixed(0) }}%</b>
@@ -428,28 +432,37 @@ const sugCards = computed(() => {
         >
       </p>
 
-      <p class="mt-5 shrink-0 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c]">
+      <p class="mt-4 shrink-0 text-[11px] sm:mt-5 font-semibold uppercase tracking-[0.18em] text-[#767e8c]">
         省錢建議 · 任務類型：{{ result.task_type }}
         <span class="ml-3 font-normal normal-case tracking-normal text-[#8b93a0]"
           >全部採用預估總共省 <b class="font-mono text-emerald-600">{{ result.total_estimated_saving_pct }}%</b></span
         >
       </p>
-      <div class="mt-2 grid shrink-0 gap-3 sm:grid-cols-2">
-        <div v-for="c in sugCards" :key="c.title" class="rounded-xl border border-[#e9e6dd] bg-[#f5f3ed] px-4 py-3">
+      <div class="mt-2 grid shrink-0 gap-2 sm:grid-cols-2 sm:gap-3">
+        <div v-for="c in visibleTips" :key="c.title" class="rounded-xl border border-[#e9e6dd] bg-[#f5f3ed] px-3 py-2.5 sm:px-4 sm:py-3">
           <div class="flex items-baseline gap-2">
-            <p class="min-w-0 text-sm font-semibold leading-6">{{ c.icon }} {{ c.title }}</p>
+            <p class="min-w-0 text-[13px] font-semibold leading-5 sm:text-sm sm:leading-6">{{ c.icon }} {{ c.title }}</p>
             <span
               v-if="c.pct > 0"
               class="ml-auto shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 font-mono text-xs font-bold tabular-nums text-emerald-700"
               >省 {{ c.pct.toFixed(0) }}%</span
             >
           </div>
-          <p class="mt-0.5 text-[13px] leading-5 text-[#767e8c]">{{ c.desc }}</p>
+          <p class="mt-0.5 text-xs leading-[1.45] text-[#767e8c] sm:text-[13px] sm:leading-5">{{ c.desc }}</p>
         </div>
       </div>
+      <!-- 手機收合：其餘建議收起來 -->
+      <button
+        v-if="hiddenTipCount > 0 || (isMobile && showAllTips && sugCards.length > 2)"
+        type="button"
+        class="mt-2 w-full rounded-lg border border-[#e9e6dd] py-1.5 text-xs text-[#767e8c] sm:hidden"
+        @click="showAllTips = !showAllTips"
+      >
+        {{ showAllTips ? '收合建議' : `另外 ${hiddenTipCount} 條使用建議` }}
+      </button>
 
       <!-- 錢花在哪（配角：不加框，一行帶過） -->
-      <div class="mt-5 shrink-0">
+      <div class="mt-4 shrink-0 sm:mt-5">
         <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
           <span class="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c]">錢花在哪</span>
           <div class="flex h-1.5 w-44 gap-0.5 overflow-hidden rounded-full">

@@ -163,6 +163,26 @@ const rows = computed<Row[]>(() => {
     })
     .sort((a, b) => a.metric - b.metric)
 })
+// 手機版：表格改單行、預設只列前幾個（含「你用的」），避免整頁被 20 個模型撐長
+const isMobile = ref(false)
+if (typeof window !== 'undefined' && window.matchMedia) {
+  const mq = window.matchMedia('(max-width: 639px)')
+  isMobile.value = mq.matches
+  mq.addEventListener('change', (e) => (isMobile.value = e.matches))
+}
+const showAllModels = ref(false)
+const MOBILE_ROWS = 5
+const visibleRows = computed(() => {
+  if (!isMobile.value || showAllModels.value || rows.value.length <= MOBILE_ROWS + 1) {
+    return rows.value
+  }
+  const top = rows.value.slice(0, MOBILE_ROWS)
+  // 「你用的」不管排第幾都要看得到，否則使用者找不到自己的模型
+  const current = rows.value.find((r) => r.m.id === props.currentModelId)
+  return current && !top.includes(current) ? [...top, current] : top
+})
+const hiddenCount = computed(() => rows.value.length - visibleRows.value.length)
+
 const maxMetric = computed(() => Math.max(...rows.value.map((r) => r.metric), 1e-12))
 const minMetric = computed(() => Math.min(...rows.value.map((r) => r.metric)))
 const hasSpread = computed(() => hasText.value && rows.value.length >= 2 && minMetric.value !== maxMetric.value)
@@ -306,15 +326,15 @@ const tips = computed(() => {
 </script>
 
 <template>
-  <main class="mx-auto grid min-h-0 w-full max-w-[1400px] flex-1 grid-cols-1 gap-x-12 gap-y-6 px-4 py-4 sm:px-8 sm:py-5 lg:grid-cols-12 lg:overflow-y-auto">
+  <main class="mx-auto grid min-h-0 w-full max-w-[1400px] flex-1 grid-cols-1 gap-x-12 gap-y-5 px-4 py-3.5 sm:gap-y-6 sm:px-8 sm:py-5 lg:grid-cols-12 lg:overflow-y-auto">
     <!-- 左：prompt + 結論 + 訂閱 -->
     <section class="flex min-h-0 flex-col lg:col-span-5">
       <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c]">你的 Prompt</p>
       <textarea
         v-model="prompt"
-        rows="5"
+        rows="3"
         placeholder="貼上你要送給 AI 的問題或指令…（用 [[ ]] 包住不能修改的段落）"
-        class="mt-2 max-h-64 min-h-36 w-full resize-y rounded-lg border border-[#eae7de] bg-[#fdfcf8] p-4 font-mono text-[13px] leading-6 text-[#3c4250] placeholder:text-[#99a0ac] focus:outline-2 focus:outline-emerald-400"
+        class="mt-2 max-h-56 min-h-24 w-full resize-y rounded-lg border border-[#eae7de] bg-[#fdfcf8] p-3 font-mono text-[13px] leading-6 text-[#3c4250] placeholder:text-[#99a0ac] focus:outline-2 focus:outline-emerald-400 sm:min-h-36 sm:p-4"
       />
       <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] text-[#767e8c]">
         <span><b class="font-mono text-[#1d2129]">{{ (tokensO200k ?? 0).toLocaleString('en-US') }}</b> tokens · 約 {{ charCount }} 字</span>
@@ -328,7 +348,7 @@ const tips = computed(() => {
         <span
           v-for="sig in estimate.signals.slice(0, 2)"
           :key="sig"
-          class="max-w-56 truncate rounded-full bg-[#f2f0ea] px-2.5 py-1 text-xs text-[#8b93a0]"
+          class="hidden max-w-56 truncate rounded-full bg-[#f2f0ea] px-2.5 py-1 text-xs text-[#8b93a0] sm:inline"
           :title="sig"
           >{{ sig }}</span
         >
@@ -375,7 +395,7 @@ const tips = computed(() => {
           v-if="estimate.scenario === 'agent'"
           class="rounded-full bg-[#f2f0ea] px-2 py-0.5 text-[11px] text-[#8b93a0]"
           title="整包工作的消耗由工具呼叫輪數決定，跟對話輪數無關，所以拉桿不影響數據"
-          >整包工作不看輪數</span
+          ><span class="sm:hidden">不看輪數</span><span class="hidden sm:inline">整包工作不看輪數</span></span
         >
         <span v-else-if="turns > 1" class="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-700">整段累積</span>
       </div>
@@ -389,9 +409,9 @@ const tips = computed(() => {
       </p>
 
       <!-- 大字結論 -->
-      <div class="mt-6">
+      <div class="mt-5 sm:mt-6">
         <template v-if="hasText && yourCost">
-          <h1 class="text-[24px] font-bold leading-snug tracking-tight">
+          <h1 class="text-[19px] font-bold leading-snug tracking-tight sm:text-[24px]">
             這個任務每次約
             <span class="border-b-4 border-emerald-300 font-mono">{{ fmtCost(yourCost.lo) }}<template v-if="yourCost.hi !== yourCost.lo">–{{ fmtCost(yourCost.hi) }}</template></span
             ><template v-if="bestRow && bestSavePct > 5"
@@ -399,7 +419,7 @@ const tips = computed(() => {
               {{ bestRow.m.name }} 能省 <span class="border-b-4 border-emerald-300 font-mono">{{ bestSavePct.toFixed(0) }}%</span></template
             >。
           </h1>
-          <p class="mt-3 text-sm leading-7 text-[#5c626e]">
+          <p class="mt-2 text-[13px] leading-6 text-[#5c626e] sm:mt-3 sm:text-sm sm:leading-7">
             {{ isLLMRefined ? 'AI 依任務精算' : '依關鍵字規則推估' }}：input
             {{ estimate.inputRange[0].toLocaleString() }}–{{ estimate.inputRange[1].toLocaleString() }} · output
             {{ estimate.outputRange[0].toLocaleString() }}–{{ estimate.outputRange[1].toLocaleString() }} tokens<template
@@ -410,7 +430,7 @@ const tips = computed(() => {
           </p>
         </template>
         <template v-else>
-          <h1 class="text-[24px] font-bold leading-snug tracking-tight text-[#b3ae9f]">
+          <h1 class="text-[19px] font-bold leading-snug tracking-tight text-[#b3ae9f] sm:text-[24px]">
             貼上 prompt，<br />馬上知道要花多少。
           </h1>
           <p class="mt-3 text-sm leading-7 text-[#99a0ac]">即時 token 計算 · 20 個模型成本對比 · 一鍵壓縮省錢</p>
@@ -418,18 +438,18 @@ const tips = computed(() => {
       </div>
 
       <!-- 怎麼省（直列式，跟訂閱者視角交換位置） -->
-      <div class="mt-6 shrink-0">
+      <div class="mt-5 shrink-0 sm:mt-6">
         <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c]">怎麼省</p>
         <ul class="mt-2 divide-y divide-[#e9e6dd] overflow-hidden rounded-xl border border-[#e9e6dd] bg-[#f5f3ed]">
-          <li v-for="t in tips" :key="t.title" class="px-4 py-2.5">
+          <li v-for="t in tips" :key="t.title" class="px-3 py-2 sm:px-4 sm:py-2.5">
             <div class="flex items-baseline gap-3">
-              <p class="min-w-0 truncate text-sm font-semibold leading-6">{{ t.title }}</p>
+              <p class="min-w-0 truncate text-[13px] font-semibold leading-6 sm:text-sm">{{ t.title }}</p>
               <span
                 class="ml-auto shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 font-mono text-xs font-bold tabular-nums text-emerald-700"
                 >{{ t.pct }}</span
               >
             </div>
-            <p class="text-[13px] leading-5 text-[#767e8c]">{{ t.desc }}</p>
+            <p class="text-xs leading-5 text-[#767e8c] sm:text-[13px]">{{ t.desc }}</p>
           </li>
         </ul>
       </div>
@@ -500,54 +520,59 @@ const tips = computed(() => {
       </div>
       <!-- 桌機：模型多時表格內部捲動，不推開下面的內容；手機：整個展開，跟著頁面捲 -->
       <ul class="sm:max-h-[52vh] sm:overflow-y-auto">
-        <li v-for="r in rows" :key="r.m.id" class="border-b border-[#eeece6] py-2 sm:py-[8px]">
-          <div class="flex items-center gap-2.5 sm:gap-3">
-            <span class="h-2 w-2 shrink-0 rounded-full" :style="{ background: providerColors[r.m.provider] }" :title="r.m.provider" />
-            <!-- 手機：名稱吃滿剩餘寬度（原本固定 w-36 會被壓到看不見） -->
-            <span
-              class="min-w-0 flex-1 truncate text-sm sm:w-36 sm:flex-none"
-              :class="r.m.id === currentModelId ? 'font-semibold' : ''"
-              :title="r.m.name"
-              >{{ r.m.name }}</span
-            >
-            <div class="hidden h-1.5 min-w-16 flex-1 rounded-full bg-[#f0eee8] sm:block">
-              <div
-                class="h-full rounded-full"
-                :class="r.m.id === currentModelId ? 'bg-[#e8927c]' : 'bg-[#b9b4a6]'"
-                :style="{ width: hasText ? `max(${(r.metric / maxMetric) * 100}%, 4px)` : '0%' }"
-              />
-            </div>
-            <span
-              class="shrink-0 whitespace-nowrap text-right font-mono text-[13px] tabular-nums sm:w-[150px] sm:text-sm"
-              :class="r.m.id === currentModelId ? 'font-bold' : ''"
-              :title="r.assumption"
-              >{{ rangeText(r) }}</span
-            >
-            <span class="hidden w-9 shrink-0 text-right font-mono text-xs tabular-nums text-[#99a0ac] sm:block" title="Artificial Analysis Intelligence Index">{{ r.m.perf_est ? '≈' : '' }}{{ r.m.perf }}</span>
-            <span class="hidden w-12 shrink-0 text-right text-xs text-[#767e8c] sm:block" :class="rowMark(r)?.cls">{{ rowMark(r)?.label ?? '' }}</span>
+        <!-- 手機一列一行（不再雙行），桌機維持完整欄位 -->
+        <li
+          v-for="r in visibleRows"
+          :key="r.m.id"
+          class="flex items-center gap-2 border-b border-[#eeece6] py-1.5 sm:gap-3 sm:py-[8px]"
+        >
+          <span class="h-2 w-2 shrink-0 rounded-full" :style="{ background: providerColors[r.m.provider] }" :title="r.m.provider" />
+          <span
+            class="min-w-0 flex-1 truncate text-[13px] sm:w-36 sm:flex-none sm:text-sm"
+            :class="r.m.id === currentModelId ? 'font-semibold' : ''"
+            :title="r.m.name"
+            >{{ r.m.name }}</span
+          >
+          <!-- 手機空間不足，相對條只在桌機顯示（數字本身已足夠比較） -->
+          <div class="hidden h-1.5 min-w-16 flex-1 rounded-full bg-[#f0eee8] sm:block">
+            <div
+              class="h-full rounded-full"
+              :class="r.m.id === currentModelId ? 'bg-[#e8927c]' : 'bg-[#b9b4a6]'"
+              :style="{ width: hasText ? `max(${(r.metric / maxMetric) * 100}%, 4px)` : '0%' }"
+            />
           </div>
-          <!-- 手機專用第二行：相對條 + 效能 + 標記 -->
-          <div class="mt-1.5 flex items-center gap-2 pl-4.5 sm:hidden">
-            <div class="h-1.5 min-w-10 flex-1 rounded-full bg-[#f0eee8]">
-              <div
-                class="h-full rounded-full"
-                :class="r.m.id === currentModelId ? 'bg-[#e8927c]' : 'bg-[#b9b4a6]'"
-                :style="{ width: hasText ? `max(${(r.metric / maxMetric) * 100}%, 4px)` : '0%' }"
-              />
-            </div>
-            <span class="shrink-0 font-mono text-[11px] tabular-nums text-[#99a0ac]">效能 {{ r.m.perf_est ? '≈' : '' }}{{ r.m.perf }}</span>
-            <span v-if="rowMark(r)" class="shrink-0 text-[11px]" :class="rowMark(r)?.cls">{{ rowMark(r)?.label }}</span>
-          </div>
+          <span class="shrink-0 font-mono text-[10px] tabular-nums text-[#99a0ac] sm:hidden">{{ r.m.perf_est ? '≈' : '' }}{{ r.m.perf }}</span>
+          <span
+            class="shrink-0 whitespace-nowrap text-right font-mono text-[12.5px] tabular-nums sm:w-[150px] sm:text-sm"
+            :class="r.m.id === currentModelId ? 'font-bold' : ''"
+            :title="r.assumption"
+            >{{ rangeText(r) }}</span
+          >
+          <span class="hidden w-9 shrink-0 text-right font-mono text-xs tabular-nums text-[#99a0ac] sm:block" title="Artificial Analysis Intelligence Index">{{ r.m.perf_est ? '≈' : '' }}{{ r.m.perf }}</span>
+          <span
+            class="shrink-0 text-right text-[10px] sm:w-12 sm:text-xs"
+            :class="[rowMark(r)?.cls, rowMark(r) ? '' : 'hidden sm:block']"
+            >{{ rowMark(r)?.label ?? '' }}</span
+          >
         </li>
         <li v-if="!rows.length" class="py-6 text-center text-xs text-[#99a0ac]">至少選一個模型才能比較成本</li>
       </ul>
+      <!-- 手機收合：預設只列最省的幾個 + 你用的 -->
+      <button
+        v-if="hiddenCount > 0 || (isMobile && showAllModels && rows.length > MOBILE_ROWS + 1)"
+        type="button"
+        class="mt-1 w-full rounded-lg border border-[#e9e6dd] py-1.5 text-xs text-[#767e8c] sm:hidden"
+        @click="showAllModels = !showAllModels"
+      >
+        {{ showAllModels ? '收合' : `顯示其餘 ${hiddenCount} 個模型` }}
+      </button>
       <p class="mt-2 text-[11px] leading-5 text-[#8b93a0]">
         效能 = Artificial Analysis Intelligence Index（≈ 為估算）· 定價為各家官方查證 ·
         {{ unit === 'tokens' ? 'tokens 已依各模型 tokenizer 與輸出詳簡係數換算' : '成本依上方情境推估，滑鼠停留數字看假設' }}
       </p>
 
       <!-- 訂閱者視角（跟怎麼省交換位置；進度條 = 一則佔每日額度） -->
-      <div class="mt-6 shrink-0">
+      <div class="mt-5 shrink-0 sm:mt-6">
         <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c]">
           💳 訂閱者視角 ·
           <span class="normal-case tracking-normal">{{ currentModelPricing.provider }}</span>（額度為估算）
