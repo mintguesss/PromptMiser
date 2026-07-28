@@ -16,6 +16,11 @@ export interface ModelPick {
   estimated_saving_pct: number
 }
 
+export interface ModelFit {
+  model: string
+  score: number
+}
+
 export type ConsumptionProfile = 'single' | 'search' | 'conversation' | 'agent'
 
 export interface UsageEstimate {
@@ -35,6 +40,8 @@ export interface OptimizeResult {
   /** 完成這個任務至少需要的模型效能（對照 AA Intelligence Index）；0 = LLM 沒判定 */
   required_perf: number
   required_perf_reason: string
+  /** LLM 逐一評分：每個模型把這個任務做好的程度（0-100） */
+  model_fit: ModelFit[]
   original_tokens: number
   compressed_prompt: string
   compressed_tokens: number

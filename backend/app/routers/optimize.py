@@ -3,6 +3,7 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException
 
 from ..models.schemas import (
+    ModelFit,
     ModelPick,
     OptimizeRequest,
     OptimizeResponse,
@@ -57,6 +58,31 @@ def _parse_model_pick(raw: object) -> Optional[ModelPick]:
         reason=str(raw.get("reason") or "").strip(),
         estimated_saving_pct=pct,
     )
+
+
+def _parse_model_fit(raw: object) -> List[ModelFit]:
+    """LLM 對各模型的任務適合度評分；格式不對的項目跳過，不讓整個回應失敗。"""
+    fits: List[ModelFit] = []
+    if not isinstance(raw, list):
+        return fits
+    seen = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("model") or "").strip()
+        # 模型清單是「提供商｜名稱｜定價…」格式，LLM 有時會整串複製回來
+        if "｜" in name:
+            parts = [p.strip() for p in name.split("｜")]
+            name = parts[1] if len(parts) > 1 else parts[0]
+        if not name or name in seen:
+            continue
+        try:
+            score = int(float(item.get("score")))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            continue
+        seen.add(name)
+        fits.append(ModelFit(model=name, score=max(0, min(100, score))))
+    return fits
 
 
 def _parse_usage_estimate(raw: object) -> Optional[UsageEstimate]:
@@ -132,6 +158,7 @@ async def optimize(req: OptimizeRequest) -> OptimizeResponse:
         usage_estimate=_parse_usage_estimate(result.get("usage_estimate")),
         required_perf=required_perf,
         required_perf_reason=str(result.get("required_perf_reason") or "").strip(),
+        model_fit=_parse_model_fit(result.get("model_fit")),
         original_tokens=original_tokens,
         compressed_prompt=compressed,
         compressed_tokens=compressed_tokens,

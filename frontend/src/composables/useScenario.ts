@@ -16,6 +16,8 @@ export type Scenario = 'single' | 'search' | 'conversation' | 'agent'
 export interface ScenarioInfo {
   id: Scenario
   label: string
+  /** 手機版用的短標籤（空間不足時避免換行） */
+  short: string
   icon: string
   note: string
   tone: 'ok' | 'warn' | 'info' | 'danger'
@@ -25,6 +27,7 @@ export const SCENARIOS: Record<Scenario, ScenarioInfo> = {
   single: {
     id: 'single',
     label: '問一次就好',
+    short: '問一次',
     icon: '✅',
     note: '不需要外部資訊、一次回答就結束，估算相對可靠。',
     tone: 'ok',
@@ -32,6 +35,7 @@ export const SCENARIOS: Record<Scenario, ScenarioInfo> = {
   search: {
     id: 'search',
     label: '要上網查',
+    short: '上網查',
     icon: '🔍',
     note: '需要即時網路查詢：搜尋結果全文會塞回 context 當 input（每輪數千 tokens、可能查多輪），實際消耗遠大於你貼的文字。訂閱方案由供應商吸收搜尋成本，仍以訊息數計。',
     tone: 'warn',
@@ -39,6 +43,7 @@ export const SCENARIOS: Record<Scenario, ScenarioInfo> = {
   agent: {
     id: 'agent',
     label: '整包工作',
+    short: '整包',
     icon: '🤖',
     note: '建置/開發類複雜工作：消耗由工具呼叫與重試輪數決定，跟 prompt 長度幾乎無關，同一任務跑兩次都可能差 5-10 倍。此區間僅為公開實測參考，無法可靠預估。',
     tone: 'danger',
@@ -48,6 +53,7 @@ export const SCENARIOS: Record<Scenario, ScenarioInfo> = {
   conversation: {
     id: 'conversation',
     label: '來回討論',
+    short: '多輪',
     icon: '💬',
     note: '多輪是輪數維度，不是任務型態——用下方輪數拉桿控制。',
     tone: 'info',

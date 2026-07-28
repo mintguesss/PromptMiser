@@ -37,6 +37,13 @@ class UsageEstimate(BaseModel):
     reason: str = ""
 
 
+class ModelFit(BaseModel):
+    """LLM 對單一模型「把這個任務做好的程度」的評分（0-100）"""
+
+    model: str
+    score: int
+
+
 class ModelPick(BaseModel):
     """模型推薦（同品牌 / 跨品牌共用同一結構）"""
 
@@ -53,6 +60,8 @@ class OptimizeResponse(BaseModel):
     # 0 = LLM 沒給，前端就不顯示勝任度。
     required_perf: int = 0
     required_perf_reason: str = ""
+    # LLM 逐一評分：每個模型把這個任務做好的程度（0-100）
+    model_fit: List[ModelFit] = Field(default_factory=list)
     original_tokens: int
     compressed_prompt: str
     compressed_tokens: int

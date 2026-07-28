@@ -58,7 +58,9 @@ export function plansForProvider(provider: string): SubscriptionPlan[] {
  * 提供商識別色（中間暗色底 #2e2e35 驗證過的類別色盤，依 providers 固定順序指派、不循環）。
  * 色點永遠伴隨文字名稱出現——識別不單靠顏色。
  */
-const PROVIDER_PALETTE = ['#3987e5', '#199e70', '#c98500', '#008300', '#9085e9', '#e66767']
+// 第 7 色 #0e8f9e（藍綠）經色盲模擬檢核：與既有 6 色的最小 ΔE 32.1（protan/deutan），
+// 對淺色底 #faf9f6 對比 3.67:1，皆通過。色點旁一律有模型名稱，識別不單靠顏色。
+const PROVIDER_PALETTE = ['#3987e5', '#199e70', '#c98500', '#008300', '#9085e9', '#0e8f9e', '#e66767']
 export const providerColors: Record<string, string> = Object.fromEntries(
   providers.map((p, i) => [p, PROVIDER_PALETTE[i % PROVIDER_PALETTE.length]]),
 )
