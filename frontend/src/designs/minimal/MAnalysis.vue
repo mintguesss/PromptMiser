@@ -171,6 +171,10 @@ if (typeof window !== 'undefined' && window.matchMedia) {
   mq.addEventListener('change', (e) => (isMobile.value = e.matches))
 }
 const showAllModels = ref(false)
+// 手機：情境切換與輪數拉桿預設收起來。多數人不會動它們，
+// 全部攤在上面會讓第一屏擠滿控制項，看不到重點。
+const controlsOpen = ref(false)
+const hintOpen = ref(false)
 const MOBILE_ROWS = 5
 const visibleRows = computed(() => {
   if (!isMobile.value || showAllModels.value || rows.value.length <= MOBILE_ROWS + 1) {
@@ -330,11 +334,26 @@ const tips = computed(() => {
     <!-- 手機：contents 讓下面兩塊變成 main 的直接項目，才能用 order 重排；桌機：一般直欄 -->
     <div class="contents lg:flex lg:min-h-0 lg:flex-col lg:col-span-5">
     <section class="order-1 flex min-h-0 flex-col">
-      <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c]">你的 Prompt</p>
+      <p class="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c]">
+        你的 Prompt
+        <!-- 用法說明收在問號裡，不要一直佔著輸入框 -->
+        <button
+          type="button"
+          class="grid h-4 w-4 place-items-center rounded-full border border-[#cfcabb] text-[10px] leading-none text-[#8b93a0] transition hover:border-[#8b93a0] hover:text-[#1d2129]"
+          :class="hintOpen ? 'border-[#8b93a0] bg-[#f2f0ea] text-[#1d2129]' : ''"
+          aria-label="用法說明"
+          @click="hintOpen = !hintOpen"
+        >
+          ?
+        </button>
+        <span v-if="hintOpen" class="font-normal normal-case tracking-normal text-[#8b93a0]">
+          用 <code class="font-mono text-[#5c626e]">[[ ]]</code> 包住的段落壓縮時不會被改
+        </span>
+      </p>
       <textarea
         v-model="prompt"
         rows="3"
-        placeholder="貼上你要送給 AI 的問題或指令…（用 [[ ]] 包住不能修改的段落）"
+        placeholder="貼上你要送給 AI 的問題或指令…"
         class="mt-2 max-h-56 min-h-24 w-full resize-y rounded-lg border border-[#eae7de] bg-[#fdfcf8] p-3 font-mono text-[13px] leading-6 text-[#3c4250] placeholder:text-[#99a0ac] focus:outline-2 focus:outline-emerald-400 sm:min-h-36 sm:p-4"
       />
       <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] text-[#767e8c]">
@@ -352,7 +371,15 @@ const tips = computed(() => {
         >
         <!-- 情境切換：目前判定結果直接標在按鈕上（深色=你手動選的、淺綠=自動判定的），
              不再另外放一顆重複的情境 chip -->
-        <span class="ml-auto flex gap-1 text-xs">
+        <!-- 手機：控制項收在「調整」後面，第一屏只留 token 數與判定結果 -->
+        <button
+          type="button"
+          class="ml-auto rounded-full bg-[#f2f0ea] px-2.5 py-1 text-xs text-[#767e8c] transition sm:hidden"
+          @click="controlsOpen = !controlsOpen"
+        >
+          調整 {{ controlsOpen ? '▴' : '▾' }}
+        </button>
+        <span class="ml-auto flex gap-1 text-xs max-sm:hidden" :class="controlsOpen ? 'max-sm:!flex max-sm:ml-0 max-sm:mt-1 max-sm:w-full' : ''">
           <button
             type="button"
             class="rounded-full px-2 py-1 transition sm:px-2.5"
@@ -384,8 +411,11 @@ const tips = computed(() => {
         </span>
       </div>
 
-      <!-- 輪數 -->
-      <div class="mt-3 flex items-center gap-3 text-[13px] text-[#767e8c]">
+      <!-- 輪數（手機跟情境切換一起收在「調整」後面） -->
+      <div
+        class="mt-3 items-center gap-3 text-[13px] text-[#767e8c] sm:flex"
+        :class="controlsOpen ? 'flex' : 'hidden'"
+      >
         <span class="shrink-0">對話輪數</span>
         <input
           :value="turns"
@@ -443,8 +473,9 @@ const tips = computed(() => {
           <h1 class="text-[17px] font-bold leading-snug tracking-tight text-[#b3ae9f] sm:text-[24px]">
             貼上 prompt，<br class="hidden sm:inline" />馬上知道要花多少。
           </h1>
-          <p class="mt-1 text-xs leading-5 text-[#99a0ac] sm:mt-3 sm:text-sm sm:leading-7">
-            即時 token 計算 · <span class="hidden sm:inline">20 個模型成本對比 · </span>一鍵壓縮省錢
+          <!-- 副標手機不顯示：一上來字太多，重點是那句大字 -->
+          <p class="mt-1 hidden text-xs leading-5 text-[#99a0ac] sm:mt-3 sm:block sm:text-sm sm:leading-7">
+            即時 token 計算 · 23 個模型成本對比 · 一鍵壓縮省錢
           </p>
         </template>
       </div>
@@ -470,35 +501,17 @@ const tips = computed(() => {
     </div>
     <!-- 右：成本表 + 訂閱 -->
     <section class="order-2 flex min-h-0 flex-col lg:col-span-7">
-      <p class="flex flex-wrap items-baseline gap-x-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c]">
-        <span>
-          <button
-            type="button"
-            class="normal-case tracking-normal"
-            :class="unit === 'cost' ? 'font-bold text-[#1d2129]' : 'border-b border-dotted border-[#b3ae9f] text-[#9a9378] hover:text-[#1d2129]'"
-            @click="unit = 'cost'"
-          >
-            各模型成本/次
-          </button>
-          <span class="px-1 text-[#b3ae9f]">·</span>
-          <button
-            type="button"
-            class="normal-case tracking-normal"
-            :class="unit === 'tokens' ? 'font-bold text-[#1d2129]' : 'border-b border-dotted border-[#b3ae9f] text-[#9a9378] hover:text-[#1d2129]'"
-            title="這個任務預估消耗的 token 數（input 依各模型 tokenizer 換算、output 含話多係數）"
-            @click="unit = 'tokens'"
-          >
-            tokens
-          </button>
-        </span>
+      <!-- 這一行只留「選擇模型」。單位切換已經做進下方的欄位標題，
+           定價日期移到表格下面的註腳，避免這裡三組東西擠在一起 -->
+      <p class="flex items-baseline gap-x-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c]">
+        <span>各模型成本</span>
         <button
           type="button"
-          class="font-normal normal-case tracking-normal text-[#767e8c] hover:text-[#1d2129]"
+          class="ml-auto font-normal normal-case tracking-normal text-[#767e8c] hover:text-[#1d2129]"
           @click="pickerOpen = !pickerOpen"
         >
-          已選 {{ selectedModelIds.length }}/{{ models.length }} · 選擇模型 {{ pickerOpen ? '▴' : '▾' }}
+          選擇模型（{{ selectedModelIds.length }}/{{ models.length }}）{{ pickerOpen ? '▴' : '▾' }}
         </button>
-        <span class="ml-auto font-normal normal-case tracking-normal">官方定價 {{ pricingUpdated }}</span>
       </p>
 
       <!-- 模型挑選（收合式） -->
@@ -518,7 +531,7 @@ const tips = computed(() => {
         </div>
       </div>
 
-      <!-- 欄位標題列：手機也要顯示，否則效能數字會被誤讀成價格的一部分 -->
+      <!-- 欄位標題列：單位切換就做在這一欄的標題上，不必另外開一行 -->
       <div class="mt-2 flex items-center gap-1.5 border-b border-[#e4e1d8] pb-1.5 text-[11px] text-[#8b93a0] sm:gap-3">
         <span class="w-2 shrink-0" />
         <span class="min-w-0 flex-1 sm:w-36 sm:flex-none">模型</span>
@@ -527,10 +540,27 @@ const tips = computed(() => {
           title="效能 = Artificial Analysis Intelligence Index（0-100，≈ 為估算值）"
           >效能</span
         >
-        <span class="ml-4 w-11 shrink-0 sm:ml-0 sm:min-w-16 sm:flex-1 sm:pl-1"
+        <span class="ml-3 w-11 shrink-0 sm:ml-0 sm:min-w-16 sm:flex-1 sm:pl-1"
           ><span class="hidden sm:inline">相對{{ unit === 'tokens' ? '用量' : '成本' }}</span></span
         >
-        <span class="w-[92px] shrink-0 text-right sm:w-[150px]">{{ unit === 'tokens' ? '預估用量' : '成本/次' }}</span>
+        <span class="w-[96px] shrink-0 whitespace-nowrap text-right sm:w-[150px]">
+          <button
+            type="button"
+            :class="unit === 'cost' ? 'font-bold text-[#1d2129]' : 'border-b border-dotted border-[#b3ae9f] text-[#9a9378] hover:text-[#1d2129]'"
+            @click="unit = 'cost'"
+          >
+            成本/次
+          </button>
+          <span class="px-1 text-[#cfcabb]">·</span>
+          <button
+            type="button"
+            :class="unit === 'tokens' ? 'font-bold text-[#1d2129]' : 'border-b border-dotted border-[#b3ae9f] text-[#9a9378] hover:text-[#1d2129]'"
+            title="這個任務預估消耗的 token 數（input 依各模型 tokenizer 換算、output 含話多係數）"
+            @click="unit = 'tokens'"
+          >
+            tokens
+          </button>
+        </span>
         <span
           class="hidden w-9 shrink-0 cursor-help text-right sm:block"
           title="效能 = Artificial Analysis Intelligence Index（0-100，≈ 為估算值）"
@@ -557,7 +587,7 @@ const tips = computed(() => {
           </span>
           <span class="w-7 shrink-0 text-left font-mono text-[10px] tabular-nums text-[#99a0ac] sm:hidden">{{ r.m.perf_est ? '≈' : '' }}{{ r.m.perf }}</span>
           <!-- 相對條：手機也保留（純數字太單調），寬度縮小塞得下 -->
-          <div class="ml-4 h-1.5 w-11 shrink-0 rounded-full bg-[#f0eee8] sm:ml-0 sm:min-w-16 sm:w-auto sm:flex-1">
+          <div class="ml-3 h-1.5 w-11 shrink-0 rounded-full bg-[#f0eee8] sm:ml-0 sm:min-w-16 sm:w-auto sm:flex-1">
             <div
               class="h-full rounded-full"
               :class="r.m.id === currentModelId ? 'bg-[#e8927c]' : 'bg-[#b9b4a6]'"
@@ -565,7 +595,7 @@ const tips = computed(() => {
             />
           </div>
           <span
-            class="w-[92px] shrink-0 whitespace-nowrap text-right font-mono text-[11px] tabular-nums sm:w-[150px] sm:text-sm"
+            class="w-[96px] shrink-0 whitespace-nowrap text-right font-mono text-[11px] tabular-nums sm:w-[150px] sm:text-sm"
             :class="r.m.id === currentModelId ? 'font-bold' : ''"
             :title="r.assumption"
             >{{ rangeText(r) }}</span
@@ -584,12 +614,17 @@ const tips = computed(() => {
       >
         {{ showAllModels ? '收合' : `顯示其餘 ${hiddenCount} 個模型` }}
       </button>
+      <!-- 手機沒有滑鼠停留，也不需要整段說明；只留一句 -->
       <p class="mt-2 text-[11px] leading-5 text-[#8b93a0]">
-        定價官方查證 · 效能為 Artificial Analysis 指數（≈ 估算）· 滑鼠停留數字看假設
+        <span class="sm:hidden">官方定價 {{ pricingUpdated }} · 效能為 Artificial Analysis 指數</span>
+        <span class="hidden sm:inline"
+          >官方定價 {{ pricingUpdated }} · 效能為 Artificial Analysis 指數（≈ 估算）· 滑鼠停留數字看假設</span
+        >
       </p>
 
-      <!-- 訂閱者視角（跟怎麼省交換位置；進度條 = 一則佔每日額度） -->
-      <div class="mt-5 shrink-0 sm:mt-6">
+      <!-- 訂閱者視角（跟怎麼省交換位置；進度條 = 一則佔每日額度）
+           手機拉開跟成本表的距離，兩塊才不會黏成一團 -->
+      <div class="mt-9 shrink-0 sm:mt-6">
         <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c]">
           💳 訂閱者視角 ·
           <span class="normal-case tracking-normal">{{ currentModelPricing.provider }}</span>（額度為估算）
@@ -598,8 +633,14 @@ const tips = computed(() => {
           v-if="subPlans.length"
           class="mt-2 divide-y divide-[#e9e6dd] overflow-hidden rounded-xl border border-[#e9e6dd] bg-[#f5f3ed]"
         >
+          <!-- 手機只留「方案名 + 一天能跑幾次」兩欄，佔比放到名稱下面當註解 -->
           <div v-for="s in subPlans" :key="s.plan.id" class="flex items-center gap-2.5 px-3 py-2.5 sm:gap-3 sm:px-4">
-            <b class="min-w-0 flex-1 truncate text-sm text-[#1d2129] sm:w-32 sm:flex-none" :title="s.plan.note">{{ s.plan.name }}</b>
+            <div class="min-w-0 flex-1 sm:w-32 sm:flex-none">
+              <b class="block truncate text-sm text-[#1d2129]" :title="s.plan.note">{{ s.plan.name }}</b>
+              <span class="font-mono text-[11px] tabular-nums text-[#8b93a0] sm:hidden"
+                >一則佔 {{ hasText ? fmtPct(s.pct) : '—' }}%</span
+              >
+            </div>
             <span class="hidden shrink-0 text-xs text-[#8b93a0] sm:block sm:w-16">{{ s.plan.price }}</span>
             <div class="hidden h-1.5 max-w-52 flex-1 rounded-full bg-white/80 sm:block" :title="`一則約佔每日額度 ${fmtPct(s.pct)}%`">
               <div
@@ -607,10 +648,10 @@ const tips = computed(() => {
                 :style="{ width: hasText ? `max(${Math.min(s.pct, 100)}%, 3px)` : '0%' }"
               />
             </div>
-            <span class="shrink-0 text-right font-mono text-[13px] tabular-nums text-[#1d2129] sm:w-20 sm:text-sm"
+            <span class="hidden shrink-0 text-right font-mono tabular-nums text-[#1d2129] sm:block sm:w-20 sm:text-sm"
               >{{ hasText ? fmtPct(s.pct) : '—' }}%<span class="text-xs text-[#8b93a0]">/則</span></span
             >
-            <span class="shrink-0 whitespace-nowrap text-right text-[13px] text-[#5c626e] sm:w-24 sm:text-sm"
+            <span class="shrink-0 whitespace-nowrap text-right text-sm text-[#5c626e] sm:w-24"
               >約 <b class="font-mono tabular-nums text-[#1d2129]">{{ hasText ? s.q.toLocaleString('en-US') : '—' }}</b> 次/天</span
             >
           </div>

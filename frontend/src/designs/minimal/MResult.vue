@@ -363,7 +363,7 @@ const visibleTips = computed(() => sugCards.value)
 
 <template>
   <main
-    class="mx-auto grid min-h-0 w-full max-w-[1400px] flex-1 grid-cols-1 gap-y-5 px-4 py-3.5 sm:gap-y-6 sm:px-8 sm:py-5 lg:grid-cols-12 lg:overflow-y-auto"
+    class="mx-auto grid min-h-0 w-full max-w-[1400px] flex-1 grid-cols-1 gap-y-10 px-4 py-3.5 sm:gap-y-6 sm:px-8 sm:py-5 lg:grid-cols-12 lg:overflow-y-auto"
   >
     <!-- ═ 左：壓縮成果 ═ -->
     <section class="flex min-h-0 flex-col lg:col-span-5 lg:pr-8">
@@ -389,7 +389,7 @@ const visibleTips = computed(() => sugCards.value)
         >
       </p>
 
-      <div class="mt-5 flex min-h-0 flex-1 flex-col sm:mt-4">
+      <div class="mt-10 flex min-h-0 flex-1 flex-col sm:mt-4">
         <p class="flex shrink-0 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c]">
           壓縮前 <span class="ml-auto font-mono normal-case tracking-normal">{{ result.original_tokens.toLocaleString('en-US') }} tokens</span>
         </p>
@@ -418,7 +418,7 @@ const visibleTips = computed(() => sugCards.value)
         </div>
       </div>
 
-      <p v-if="result.usage_estimate?.reason" class="mt-4 shrink-0 text-[13px] leading-6 text-[#767e8c] sm:mt-3">
+      <p v-if="result.usage_estimate?.reason" class="mt-8 shrink-0 text-[13px] leading-6 text-[#767e8c] sm:mt-3">
         🤖 AI 估算依據：{{ result.usage_estimate.reason }}
       </p>
     </section>
@@ -533,7 +533,7 @@ const visibleTips = computed(() => sugCards.value)
         <!-- 最重要的一句：做成重點框，整頁的視覺焦點 -->
         <p
           v-else-if="compare.rec"
-          class="mt-4 rounded-xl border border-emerald-200/70 bg-emerald-50/70 px-3.5 py-3 text-[13px] leading-6 text-[#3c4250] sm:mt-2.5 sm:px-4 sm:py-2.5 sm:text-sm"
+          class="mt-8 rounded-xl border border-emerald-200/70 bg-emerald-50/70 px-3.5 py-3 text-[13px] leading-6 text-[#3c4250] sm:mt-2.5 sm:px-4 sm:py-2.5 sm:text-sm"
         >
           ⭐ 同樣這個任務，改用 <b class="text-[#1d2129]">{{ compare.rec.m.name }}</b> 每次能省
           <b class="font-mono text-base text-emerald-700">{{ compare.recSave.toFixed(0) }}%</b>
@@ -551,7 +551,7 @@ const visibleTips = computed(() => sugCards.value)
         >
       </p>
 
-      <p class="mt-7 shrink-0 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c] sm:mt-5">
+      <p class="mt-14 shrink-0 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c] sm:mt-5">
         省錢建議 · 任務類型：{{ result.task_type }}
         <span class="ml-3 font-normal normal-case tracking-normal text-[#8b93a0]"
           >全部採用預估總共省 <b class="font-mono text-emerald-600">{{ result.total_estimated_saving_pct }}%</b></span
@@ -588,7 +588,7 @@ const visibleTips = computed(() => sugCards.value)
       </div>
 
       <!-- 錢花在哪（配角：不加框，一行帶過） -->
-      <div class="mt-7 shrink-0 sm:mt-5">
+      <div class="mt-14 shrink-0 sm:mt-5">
         <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
           <span class="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c]">錢花在哪</span>
           <div class="flex h-1.5 w-44 gap-0.5 overflow-hidden rounded-full">
@@ -609,7 +609,7 @@ const visibleTips = computed(() => sugCards.value)
         </div>
 
         <!-- 訂閱者視角 -->
-        <div v-if="subPlans.length" class="mt-4 divide-y divide-[#e9e6dd] sm:mt-3 overflow-hidden rounded-xl border border-[#e9e6dd] bg-[#f5f3ed]">
+        <div v-if="subPlans.length" class="mt-8 divide-y divide-[#e9e6dd] sm:mt-3 overflow-hidden rounded-xl border border-[#e9e6dd] bg-[#f5f3ed]">
           <div v-for="s in subPlans" :key="s.plan.id" class="flex items-center gap-2.5 px-3 py-2 sm:gap-3 sm:px-4">
             <b class="min-w-0 flex-1 truncate text-sm text-[#1d2129] sm:w-32 sm:flex-none" :title="s.plan.note">💳 {{ s.plan.name }}</b>
             <span class="hidden shrink-0 text-xs text-[#8b93a0] sm:block sm:w-16">{{ s.plan.price }}</span>
