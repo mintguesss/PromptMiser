@@ -382,12 +382,26 @@ const visibleTips = computed(() => sugCards.value)
         {{ turns > 1 && !isAgent ? `這種問題來回 ${turns} 輪，` : '跑一次' }}約
         <b class="font-mono text-[#1d2129]">{{ fmtUSD(realSave.after) }}</b>
         <span v-if="rep.precise" class="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">🤖 AI 精算</span>
-        · 錢主要花在<b class="text-[#1d2129]">{{ breakdown.plain.where }}</b
-        ><template v-if="realSave.pct < 5"
-          >，所以省字幫助不大——省錢重點<span class="lg:hidden">在下面 ↓</span
-          ><span class="hidden lg:inline">在右邊 →</span></template
-        >
       </p>
+      <!-- 錢花在哪：跟上面那句講的是同一件事，直接併在這裡一次講完，
+           不必在頁尾再開一個區塊重複一遍 -->
+      <div class="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-[#767e8c]">
+        <div class="flex h-1.5 w-28 gap-0.5 overflow-hidden rounded-full">
+          <div
+            v-for="it in bdLegend"
+            :key="it.key"
+            class="h-full first:rounded-l-full last:rounded-r-full"
+            :style="{ width: `max(${it.pct}%, 3px)`, background: it.color }"
+          />
+        </div>
+        <span>
+          <template v-for="(it, i) in bdLegend" :key="it.key">
+            <span :class="it.hot ? 'font-semibold text-[#1d2129]' : ''">{{ it.label }} {{ it.pct.toFixed(0) }}%</span>
+            <span v-if="i < bdLegend.length - 1"> · </span>
+          </template>
+        </span>
+        <span class="text-[#8b93a0]">💡 {{ breakdown.plain.act }}</span>
+      </div>
 
       <div class="mt-10 flex min-h-0 flex-1 flex-col sm:mt-4">
         <p class="flex shrink-0 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c]">
@@ -587,31 +601,15 @@ const visibleTips = computed(() => sugCards.value)
         </div>
       </div>
 
-      <!-- 錢花在哪（配角：不加框，一行帶過） -->
+      <!-- 「錢花在哪」已併到頁面上方的結論那一段，這裡只留訂閱者視角。
+           原本它是掛在「錢花在哪」的標題下面，拿掉後要補自己的標題才不會變孤兒 -->
       <div class="mt-14 shrink-0 sm:mt-5">
-        <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <span class="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c]">錢花在哪</span>
-          <div class="flex h-1.5 w-44 gap-0.5 overflow-hidden rounded-full">
-            <div
-              v-for="it in bdLegend"
-              :key="it.key"
-              class="h-full first:rounded-l-full last:rounded-r-full"
-              :style="{ width: `max(${it.pct}%, 3px)`, background: it.color }"
-            />
-          </div>
-          <span class="text-xs text-[#767e8c]">
-            <template v-for="(it, i) in bdLegend" :key="it.key">
-              <span :class="it.hot ? 'font-semibold text-[#1d2129]' : ''">{{ it.label }} {{ it.pct.toFixed(0) }}%</span>
-              <span v-if="i < bdLegend.length - 1"> · </span>
-            </template>
-          </span>
-          <span class="text-xs text-[#8b93a0]">💡 {{ breakdown.plain.act }}</span>
-        </div>
-
-        <!-- 訂閱者視角 -->
-        <div v-if="subPlans.length" class="mt-8 divide-y divide-[#e9e6dd] sm:mt-3 overflow-hidden rounded-xl border border-[#e9e6dd] bg-[#f5f3ed]">
+        <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c]">
+          💳 訂閱者視角<span class="normal-case tracking-normal">（額度為估算）</span>
+        </p>
+        <div v-if="subPlans.length" class="mt-3 divide-y divide-[#e9e6dd] overflow-hidden rounded-xl border border-[#e9e6dd] bg-[#f5f3ed]">
           <div v-for="s in subPlans" :key="s.plan.id" class="flex items-center gap-2.5 px-3 py-2 sm:gap-3 sm:px-4">
-            <b class="min-w-0 flex-1 truncate text-sm text-[#1d2129] sm:w-32 sm:flex-none" :title="s.plan.note">💳 {{ s.plan.name }}</b>
+            <b class="min-w-0 flex-1 truncate text-sm text-[#1d2129] sm:w-32 sm:flex-none" :title="s.plan.note">{{ s.plan.name }}</b>
             <span class="hidden shrink-0 text-xs text-[#8b93a0] sm:block sm:w-16">{{ s.plan.price }}</span>
             <div class="hidden h-1.5 max-w-52 flex-1 rounded-full bg-white/80 sm:block" :title="`一則約佔每日額度 ${fmtPct(s.pct)}%`">
               <div class="h-full rounded-full bg-[#3987e5]" :style="{ width: `max(${Math.min(s.pct, 100)}%, 3px)` }" />
