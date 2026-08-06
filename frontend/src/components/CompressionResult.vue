@@ -233,7 +233,7 @@ const compare = computed(() => {
   }
 })
 
-// ── 訂閱者視角：依「你用的模型」的提供商，關聯到對應訂閱方案，看額度而非錢 ──
+// ── 訂閱方案：依「你用的模型」的提供商，關聯到對應訂閱方案，看額度而非錢 ──
 const subPlans = computed(() => plansForProvider(props.modelPricing.provider))
 const subView = computed(() => {
   const { ctx, calls } = rep.value
@@ -399,7 +399,7 @@ function fmtTok(n: number, approx: boolean): string {
       </p>
     </div>
 
-    <!-- 訂閱者視角（次要資訊，每方案一行 + 小量值條）：月費固定、看的是額度不是錢 -->
+    <!-- 訂閱方案（次要資訊，每方案一行 + 小量值條）：月費固定、看的是額度不是錢 -->
     <div class="flex flex-col gap-1 rounded-xl bg-panel-2/50 px-3.5 py-2">
       <div class="flex items-center gap-2">
         <span class="section-label">💳 訂閱者省下的額度</span>

@@ -234,6 +234,14 @@ const bestRow = computed(() => {
   const cands = rows.value.filter((r) => !r.m.free && r.m.id !== props.currentModelId)
   return cands.length ? [...cands].sort((a, b) => a.costHi - b.costHi)[0] : null
 })
+/** 這次的錢有多少比例花在你的字上（其餘是 AI 回覆） */
+const inShare = computed(() => {
+  const m = currentModelPricing.value
+  const e = estimate.value
+  const i = e.inputRange[1] * m.input_per_1m
+  const o = e.outputRange[1] * (m.verbosity ?? 1) * m.output_per_1m
+  return (i / (i + o || 1)) * 100
+})
 const bestSavePct = computed(() =>
   yourCost.value && bestRow.value && yourCost.value.hi > 0
     ? (1 - bestRow.value.costHi / yourCost.value.hi) * 100
@@ -330,12 +338,12 @@ const tips = computed(() => {
 </script>
 
 <template>
-  <main class="mx-auto grid min-h-0 w-full max-w-[1400px] flex-1 grid-cols-1 gap-x-12 gap-y-5 px-4 py-3.5 sm:gap-y-6 sm:px-8 sm:py-5 lg:grid-cols-12 lg:overflow-y-auto">
+  <main class="mx-auto grid min-h-0 w-full max-w-[1400px] flex-1 grid-cols-1 gap-x-12 gap-y-5 px-4 py-3.5 sm:gap-y-6 sm:px-8 sm:py-5 lg:grid-cols-12 lg:content-start lg:overflow-y-auto">
     <!-- 手機：contents 讓下面兩塊變成 main 的直接項目，才能用 order 重排；桌機：一般直欄 -->
     <div class="contents lg:flex lg:min-h-0 lg:flex-col lg:col-span-5">
-    <section class="order-1 flex min-h-0 flex-col">
+    <section class="order-1 flex min-h-0 flex-col lg:flex-1">
       <p class="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c]">
-        你的 Prompt
+        <span class="shrink-0">你的 Prompt</span>
         <!-- 用法說明收在問號裡，不要一直佔著輸入框 -->
         <button
           type="button"
@@ -349,12 +357,13 @@ const tips = computed(() => {
         <span v-if="hintOpen" class="font-normal normal-case tracking-normal text-[#8b93a0]">
           用 <code class="font-mono text-[#5c626e]">[[ ]]</code> 包住的段落壓縮時不會被改
         </span>
+        <span v-else class="ml-1 h-px flex-1 bg-[#e4e1d8]" />
       </p>
       <textarea
         v-model="prompt"
         rows="3"
         placeholder="貼上你要送給 AI 的問題或指令…"
-        class="mt-2 max-h-56 min-h-24 w-full resize-y rounded-lg border border-[#eae7de] bg-[#fdfcf8] p-3 font-mono text-[13px] leading-6 text-[#3c4250] placeholder:text-[#99a0ac] focus:outline-2 focus:outline-emerald-400 sm:min-h-36 sm:p-4"
+        class="mt-2 max-h-56 min-h-24 w-full resize-y rounded-lg lg:max-h-none lg:min-h-0 lg:flex-1 border border-[#eae7de] bg-[#fdfcf8] p-3 font-mono text-[13px] leading-6 text-[#3c4250] placeholder:text-[#99a0ac] focus:outline-2 focus:outline-emerald-400 sm:min-h-36 sm:p-4"
       />
       <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] text-[#767e8c]">
         <span><b class="font-mono text-[#1d2129]">{{ (tokensO200k ?? 0).toLocaleString('en-US') }}</b> tokens · 約 {{ charCount }} 字</span>
@@ -379,7 +388,7 @@ const tips = computed(() => {
         >
           調整 {{ controlsOpen ? '▴' : '▾' }}
         </button>
-        <span class="ml-auto flex gap-1 text-xs max-sm:hidden" :class="controlsOpen ? 'max-sm:!flex max-sm:ml-0 max-sm:mt-1 max-sm:w-full' : ''">
+        <span class="flex gap-1 text-xs max-sm:hidden" :class="controlsOpen ? 'max-sm:!flex max-sm:mt-1 max-sm:w-full' : ''">
           <button
             type="button"
             class="rounded-full px-2 py-1 transition sm:px-2.5"
@@ -447,33 +456,81 @@ const tips = computed(() => {
       </p>
 
       <!-- 大字結論／歡迎語：手機排到輸入框上方（一打開就看到重點），桌機維持在結論位置 -->
-      <div class="order-first mb-3 lg:order-none lg:mb-0 lg:mt-6">
+      <!-- 結論卡：夢幻漸層深色塊。手機把整頁最重要的三件事集中在這裡——
+           花多少、用量多少、換誰能省。刻意壓縮內距，不要卡片版那種大塊頭。 -->
+      <div class="order-first mb-3 lg:order-first lg:mb-5 lg:mt-0">
         <template v-if="hasText && yourCost">
-          <!-- 手機：一行講完，換行只在桌機做 -->
-          <h1 class="text-[17px] font-bold leading-snug tracking-tight sm:text-[24px]">
-            每次約
-            <span class="border-b-[3px] border-emerald-300 font-mono sm:border-b-4">{{ fmtCost(yourCost.lo) }}<template v-if="yourCost.hi !== yourCost.lo">–{{ fmtCost(yourCost.hi) }}</template></span
-            ><template v-if="bestRow && bestSavePct > 5"
-              >，<br class="hidden sm:inline" />換 {{ bestRow.m.name }} 省
-              <span class="border-b-[3px] border-emerald-300 font-mono sm:border-b-4">{{ bestSavePct.toFixed(0) }}%</span></template
-            >
-          </h1>
-          <!-- 詳細 token 區間放 tooltip，版面只留一句 -->
-          <p
-            class="mt-1 text-xs leading-5 text-[#767e8c] sm:mt-3 sm:text-sm sm:leading-6"
-            :title="`input ${estimate.inputRange[0].toLocaleString()}–${estimate.inputRange[1].toLocaleString()} · output ${estimate.outputRange[0].toLocaleString()}–${estimate.outputRange[1].toLocaleString()} tokens${estimate.calls[1] > 1 ? ` × ${estimate.calls[0]}–${estimate.calls[1]} 次呼叫` : ''}`"
+          <div
+            class="relative overflow-hidden rounded-[18px] px-4 py-3.5 ring-1 ring-inset ring-white/70 shadow-[0_4px_14px_-8px_rgba(80,70,140,0.35)] lg:hidden"
+            style="background: linear-gradient(135deg, #e9edff 0%, #f2eaff 46%, #e3f5f0 100%)"
           >
-            預估
-            <b class="font-mono text-[#1d2129]">{{ fmtTok(estimate.inputRange[1] + estimate.outputRange[1]) }}</b>
-            tokens<template v-if="estimate.calls[1] > 1"> · {{ estimate.calls[0] }}–{{ estimate.calls[1] }} 次呼叫</template
-            >{{ estimate.reliable ? '' : ' · 僅為量級' }}
-          </p>
+            <!-- 三團柔光疊出漸層的層次，單一線性漸層會顯得平 -->
+            <div class="pointer-events-none absolute -left-8 -top-10 h-32 w-32 rounded-full bg-[#a78bfa] opacity-40 blur-2xl" />
+            <div class="pointer-events-none absolute -bottom-12 right-6 h-28 w-28 rounded-full bg-[#5eead4] opacity-45 blur-2xl" />
+            <div class="pointer-events-none absolute -right-10 top-0 h-24 w-24 rounded-full bg-[#f9a8d4] opacity-35 blur-2xl" />
+
+            <div class="relative flex items-baseline justify-between gap-3">
+              <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6f6a92]">這次要花</p>
+              <p class="font-mono text-[12px] text-[#8b8aa6]">
+                {{ fmtTok(estimate.inputRange[1] + estimate.outputRange[1]) }} tokens
+              </p>
+            </div>
+            <p class="relative mt-1 font-mono text-[25px] font-bold leading-none tracking-tighter text-[#221f35]">
+              {{ fmtCost(yourCost.lo)
+              }}<template v-if="yourCost.hi !== yourCost.lo">–{{ fmtCost(yourCost.hi) }}</template>
+            </p>
+
+            <div class="relative mt-3 flex h-[3px] overflow-hidden rounded-full bg-white/70">
+              <div class="h-full bg-[#6d8cf5]" :style="{ width: `${inShare}%` }" />
+              <div class="h-full bg-[#16b98a]" :style="{ width: `${100 - inShare}%` }" />
+            </div>
+            <p class="relative mt-2 text-[12px] leading-[18px] text-[#6f6c8c]">
+              這筆錢花在
+              <b class="font-mono text-[#3b3757]">你的字 {{ inShare.toFixed(0) }}%</b> ·
+              <b class="font-mono text-[#3b3757]">AI 回覆 {{ (100 - inShare).toFixed(0) }}%</b>
+            </p>
+
+            <!-- 換模型結論併進同一張卡，不另外開一塊 -->
+            <div
+              v-if="bestRow && bestSavePct > 5"
+              class="relative mt-3 flex items-center justify-between gap-3 border-t border-[#221f35]/10 pt-2.5"
+            >
+              <span class="min-w-0 text-[13px] text-[#4c4869]">
+                ⭐ 換 <b class="font-semibold text-[#221f35]">{{ bestRow.m.name }}</b>
+              </span>
+              <span class="shrink-0 font-mono text-[18px] font-bold leading-none tracking-tight text-[#0f9d6e]">
+                省 {{ bestSavePct.toFixed(0) }}%
+              </span>
+            </div>
+          </div>
+
+          <!-- 桌機維持原本貼在背景上的大字排版 -->
+          <div class="hidden lg:block">
+            <h1 class="text-[24px] font-bold leading-snug tracking-tight">
+              每次約
+              <span class="border-b-4 border-emerald-300 font-mono">{{ fmtCost(yourCost.lo)
+                }}<template v-if="yourCost.hi !== yourCost.lo">–{{ fmtCost(yourCost.hi) }}</template></span
+              ><template v-if="bestRow && bestSavePct > 5"
+                >，<br />換 {{ bestRow.m.name }} 省
+                <span class="border-b-4 border-emerald-300 font-mono">{{ bestSavePct.toFixed(0) }}%</span></template
+              >
+            </h1>
+            <p
+              class="mt-3 text-sm leading-6 text-[#767e8c]"
+              :title="`input ${estimate.inputRange[0].toLocaleString()}–${estimate.inputRange[1].toLocaleString()} · output ${estimate.outputRange[0].toLocaleString()}–${estimate.outputRange[1].toLocaleString()} tokens`"
+            >
+              預估
+              <b class="font-mono text-[#1d2129]">{{ fmtTok(estimate.inputRange[1] + estimate.outputRange[1]) }}</b>
+              tokens<template v-if="estimate.calls[1] > 1"> · {{ estimate.calls[0] }}–{{ estimate.calls[1] }} 次呼叫</template
+              >{{ estimate.reliable ? '' : ' · 僅為量級' }}
+            </p>
+          </div>
         </template>
+
         <template v-else>
           <h1 class="text-[17px] font-bold leading-snug tracking-tight text-[#b3ae9f] sm:text-[24px]">
             貼上 prompt，<br class="hidden sm:inline" />馬上知道要花多少。
           </h1>
-          <!-- 副標手機不顯示：一上來字太多，重點是那句大字 -->
           <p class="mt-1 hidden text-xs leading-5 text-[#99a0ac] sm:mt-3 sm:block sm:text-sm sm:leading-7">
             即時 token 計算 · 23 個模型成本對比 · 一鍵壓縮省錢
           </p>
@@ -484,17 +541,18 @@ const tips = computed(() => {
 
     <!-- 怎麼省（直列式，跟訂閱方案交換位置） -->
     <div class="order-3 shrink-0 lg:mt-6">
-      <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c]">怎麼省</p>
-      <ul class="mt-2 divide-y divide-[#e9e6dd] overflow-hidden rounded-xl border border-[#e9e6dd] bg-[#f5f3ed]">
-        <li v-for="t in tips" :key="t.title" class="px-3 py-2 sm:px-4 sm:py-2.5">
-          <div class="flex items-baseline gap-3">
-            <p class="min-w-0 truncate text-[13px] font-semibold leading-6 sm:text-sm">{{ t.title }}</p>
-            <span
-              class="ml-auto shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 font-mono text-xs font-bold tabular-nums text-emerald-700"
-              >{{ t.pct }}</span
-            >
+      <p class="flex items-baseline gap-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c]"><span class="shrink-0">怎麼省</span><span class="h-px flex-1 bg-[#e4e1d8]" /></p>
+      <ul class="mt-2.5 divide-y divide-[#e7e3d9] overflow-hidden rounded-2xl border border-[#e7e3d9] bg-[#f6f4ef]">
+        <li v-for="t in tips" :key="t.title" class="flex gap-3 px-3.5 py-3 sm:px-4">
+          <!-- 省 % 做成方形徽章當視覺起點，比一條色軌有訊息量 -->
+          <span
+            class="mt-0.5 grid h-9 w-11 shrink-0 place-items-center rounded-[10px] bg-emerald-50 font-mono text-[12px] font-bold tabular-nums text-emerald-700 ring-1 ring-inset ring-emerald-100"
+            >{{ t.pct }}</span
+          >
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-[13.5px] font-bold leading-5 text-[#1d2129] sm:text-sm">{{ t.title }}</p>
+            <p class="mt-1 text-[12.5px] leading-5 text-[#8b93a0] sm:text-[13px]">{{ t.desc }}</p>
           </div>
-          <p class="text-xs leading-5 text-[#767e8c] sm:text-[13px]">{{ t.desc }}</p>
         </li>
       </ul>
     </div>
@@ -503,16 +561,33 @@ const tips = computed(() => {
     <section class="order-2 flex min-h-0 flex-col lg:col-span-7">
       <!-- 這一行只留「選擇模型」。單位切換已經做進下方的欄位標題，
            定價日期移到表格下面的註腳，避免這裡三組東西擠在一起 -->
-      <p class="flex items-baseline gap-x-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c]">
-        <span>各模型成本</span>
+      <!-- 標題列：跟卡片版同一套——標題 + 延伸線 + segmented 切換，再加選擇模型 -->
+      <div class="flex items-center gap-2.5">
+        <p class="shrink-0 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c]">各模型成本</p>
+        <span class="h-px flex-1 bg-[#e4e1d8]" />
         <button
           type="button"
-          class="ml-auto font-normal normal-case tracking-normal text-[#767e8c] hover:text-[#1d2129]"
+          class="shrink-0 rounded-full border border-[#eae7de] bg-white px-2.5 py-1 text-[11px] text-[#767e8c] transition active:scale-95"
           @click="pickerOpen = !pickerOpen"
         >
-          選擇模型（{{ selectedModelIds.length }}/{{ models.length }}）{{ pickerOpen ? '▴' : '▾' }}
+          選擇模型 {{ selectedModelIds.length }}/{{ models.length }}
         </button>
-      </p>
+        <div class="flex shrink-0 overflow-hidden rounded-full bg-[#efece5] p-0.5">
+          <button
+            v-for="opt in [
+              { id: 'cost' as const, label: '成本' },
+              { id: 'tokens' as const, label: 'tokens' },
+            ]"
+            :key="opt.id"
+            type="button"
+            class="rounded-full px-2.5 py-0.5 text-[11px] transition"
+            :class="unit === opt.id ? 'bg-white font-semibold text-[#1d2129] shadow-sm' : 'text-[#8b93a0]'"
+            @click="unit = opt.id"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
+      </div>
 
       <!-- 模型挑選（收合式） -->
       <div v-if="pickerOpen" class="mt-2 rounded-lg border border-[#eae7de] bg-[#fdfcf8] p-3">
@@ -531,77 +606,68 @@ const tips = computed(() => {
         </div>
       </div>
 
-      <!-- 欄位標題列：單位切換就做在這一欄的標題上，不必另外開一行 -->
-      <div class="mt-2 flex items-center gap-1.5 border-b border-[#e4e1d8] pb-1.5 text-[11px] text-[#8b93a0] sm:gap-3">
+      <!-- 欄位標題列：手機不需要（單位切換已移到區塊標題），只留桌機用 -->
+      <div class="mt-2 hidden items-center gap-3 border-b border-[#e4e1d8] pb-1.5 text-[11px] text-[#8b93a0] sm:flex">
         <span class="w-2 shrink-0" />
-        <span class="min-w-0 flex-1 sm:w-36 sm:flex-none">模型</span>
-        <span
-          class="w-7 shrink-0 cursor-help text-left sm:hidden"
-          title="效能 = Artificial Analysis Intelligence Index（0-100，≈ 為估算值）"
-          >效能</span
-        >
-        <span class="ml-3 w-11 shrink-0 sm:ml-0 sm:min-w-16 sm:flex-1 sm:pl-1"
-          ><span class="hidden sm:inline">相對{{ unit === 'tokens' ? '用量' : '成本' }}</span></span
-        >
-        <span class="w-[96px] shrink-0 whitespace-nowrap text-right sm:w-[150px]">
-          <button
-            type="button"
-            :class="unit === 'cost' ? 'font-bold text-[#1d2129]' : 'border-b border-dotted border-[#b3ae9f] text-[#9a9378] hover:text-[#1d2129]'"
-            @click="unit = 'cost'"
-          >
-            成本/次
-          </button>
-          <span class="px-1 text-[#cfcabb]">·</span>
-          <button
-            type="button"
-            :class="unit === 'tokens' ? 'font-bold text-[#1d2129]' : 'border-b border-dotted border-[#b3ae9f] text-[#9a9378] hover:text-[#1d2129]'"
-            title="這個任務預估消耗的 token 數（input 依各模型 tokenizer 換算、output 含話多係數）"
-            @click="unit = 'tokens'"
-          >
-            tokens
-          </button>
-        </span>
-        <span
-          class="hidden w-9 shrink-0 cursor-help text-right sm:block"
-          title="效能 = Artificial Analysis Intelligence Index（0-100，≈ 為估算值）"
-          >效能</span
-        >
-        <span class="hidden w-12 shrink-0 sm:block" />
+        <span class="w-36 shrink-0">模型</span>
+        <span class="min-w-16 flex-1 pl-1">相對{{ unit === 'tokens' ? '用量' : '成本' }}</span>
+        <span class="w-[150px] shrink-0 text-right">{{ unit === 'tokens' ? '預估用量' : '成本/次' }}</span>
+        <span class="w-9 shrink-0 text-right">效能</span>
+        <span class="w-12 shrink-0" />
       </div>
       <!-- 桌機：模型多時表格內部捲動，不推開下面的內容；手機：整個展開，跟著頁面捲 -->
-      <ul class="sm:max-h-[52vh] sm:overflow-y-auto">
+      <ul class="lg:max-h-[46vh] lg:overflow-y-auto lg:pr-1 lg:[&>li]:py-[13px]">
         <!-- 手機一列一行（不再雙行），桌機維持完整欄位 -->
         <li
           v-for="r in visibleRows"
           :key="r.m.id"
-          class="flex items-center gap-1.5 border-b border-[#eeece6] py-1.5 sm:gap-3 sm:py-[8px]"
+          class="border-b border-[#eeece6] py-2 sm:flex sm:items-center sm:gap-3 sm:py-[8px]"
         >
-          <span class="h-2 w-2 shrink-0 rounded-full" :style="{ background: providerColors[r.m.provider] }" :title="r.m.provider" />
-          <!-- 手機：標記跟名稱綁在一起，避免撐開後面的欄位造成各行不對齊 -->
-          <span
-            class="flex min-w-0 flex-1 items-baseline gap-1.5 sm:w-36 sm:flex-none"
-            :title="r.m.name"
-          >
-            <span class="min-w-0 truncate text-[13px] sm:text-sm" :class="r.m.id === currentModelId ? 'font-semibold' : ''">{{ r.m.name }}</span>
-            <span v-if="rowMark(r)" class="shrink-0 text-[10px] sm:hidden" :class="rowMark(r)?.cls">{{ rowMark(r)?.label }}</span>
-          </span>
-          <span class="w-7 shrink-0 text-left font-mono text-[10px] tabular-nums text-[#99a0ac] sm:hidden">{{ r.m.perf_est ? '≈' : '' }}{{ r.m.perf }}</span>
-          <!-- 相對條：手機也保留（純數字太單調），寬度縮小塞得下 -->
-          <div class="ml-3 h-1.5 w-11 shrink-0 rounded-full bg-[#f0eee8] sm:ml-0 sm:min-w-16 sm:w-auto sm:flex-1">
+          <!-- 第一行：模型 / 效能 / 成本，三欄固定寬度所以會垂直對齊 -->
+          <div class="flex items-baseline gap-2 sm:contents">
+            <span
+              class="h-2 w-2 shrink-0 translate-y-[-1px] rounded-full sm:translate-y-0"
+              :style="{ background: providerColors[r.m.provider] }"
+              :title="r.m.provider"
+            />
+            <span class="flex min-w-0 flex-1 items-baseline gap-1.5 sm:w-36 sm:flex-none" :title="r.m.name">
+              <span class="min-w-0 truncate text-[13.5px] sm:text-sm" :class="r.m.id === currentModelId ? 'font-semibold' : ''">{{ r.m.name }}</span>
+              <span v-if="rowMark(r)" class="shrink-0 text-[10px] sm:hidden" :class="rowMark(r)?.cls">{{ rowMark(r)?.label }}</span>
+            </span>
+            <span class="w-12 shrink-0 text-right font-mono text-[11px] tabular-nums text-[#99a0ac] sm:hidden"
+              >{{ r.m.perf_est ? '≈' : '' }}{{ r.m.perf }}</span
+            >
+            <!-- 桌機的相對條 -->
+            <div class="hidden h-1.5 rounded-full bg-[#f0eee8] sm:block sm:min-w-16 sm:w-auto sm:flex-1">
+              <div
+                class="h-full rounded-full"
+                :style="{
+                  width: hasText ? `max(${(r.metric / maxMetric) * 100}%, 4px)` : '0%',
+                  background: r.m.id === currentModelId ? '#e8927c' : providerColors[r.m.provider],
+                  opacity: r.m.id === currentModelId ? 1 : 0.45,
+                }"
+              />
+            </div>
+            <span
+              class="w-[104px] shrink-0 whitespace-nowrap text-right font-mono text-[11.5px] font-semibold tabular-nums text-[#3c4250] sm:w-[150px] sm:text-sm"
+              :class="r.m.id === currentModelId ? '!font-bold !text-[#1d2129]' : ''"
+              :title="r.assumption"
+              >{{ rangeText(r) }}</span
+            >
+            <span class="hidden w-9 shrink-0 text-right font-mono text-xs tabular-nums text-[#99a0ac] sm:block">{{ r.m.perf_est ? '≈' : '' }}{{ r.m.perf }}</span>
+            <span class="hidden w-12 shrink-0 text-right text-xs sm:block" :class="rowMark(r)?.cls">{{ rowMark(r)?.label ?? '' }}</span>
+          </div>
+          <!-- 第二行（手機）：長條拉滿寬度，比擠在中間的小段清楚得多 -->
+          <div class="mt-1.5 ml-4 h-[3px] rounded-full bg-[#f0eee8] sm:hidden">
             <div
               class="h-full rounded-full"
-              :class="r.m.id === currentModelId ? 'bg-[#e8927c]' : 'bg-[#b9b4a6]'"
-              :style="{ width: hasText ? `max(${(r.metric / maxMetric) * 100}%, 4px)` : '0%' }"
+              :style="{
+                width: hasText ? `max(${(r.metric / maxMetric) * 100}%, 3px)` : '0%',
+                background: r.m.id === currentModelId ? '#e8927c' : providerColors[r.m.provider],
+                opacity: r.m.id === currentModelId ? 1 : 0.45,
+              }"
             />
           </div>
-          <span
-            class="w-[96px] shrink-0 whitespace-nowrap text-right font-mono text-[11px] tabular-nums sm:w-[150px] sm:text-sm"
-            :class="r.m.id === currentModelId ? 'font-bold' : ''"
-            :title="r.assumption"
-            >{{ rangeText(r) }}</span
-          >
-          <span class="hidden w-9 shrink-0 text-right font-mono text-xs tabular-nums text-[#99a0ac] sm:block" title="Artificial Analysis Intelligence Index">{{ r.m.perf_est ? '≈' : '' }}{{ r.m.perf }}</span>
-          <span class="hidden w-12 shrink-0 text-right text-xs sm:block" :class="rowMark(r)?.cls">{{ rowMark(r)?.label ?? '' }}</span>
         </li>
         <li v-if="!rows.length" class="py-6 text-center text-xs text-[#99a0ac]">至少選一個模型才能比較成本</li>
       </ul>
@@ -625,19 +691,23 @@ const tips = computed(() => {
       <!-- 訂閱方案（跟怎麼省交換位置；進度條 = 一則佔每日額度）
            手機拉開跟成本表的距離，兩塊才不會黏成一團 -->
       <div class="mt-9 shrink-0 sm:mt-6">
-        <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c]">
-          💳 訂閱方案 ·
-          <span class="normal-case tracking-normal">{{ currentModelPricing.provider }}</span>（額度為估算）
+        <p class="flex items-baseline gap-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#767e8c]">
+          <span class="shrink-0"
+            >💳 訂閱方案 ·
+            <span class="normal-case tracking-normal">{{ currentModelPricing.provider }}</span></span
+          >
+          <span class="h-px flex-1 bg-[#e4e1d8]" />
+          <span class="shrink-0 font-normal normal-case tracking-normal text-[#b3ae9f]">額度為估算</span>
         </p>
         <div
           v-if="subPlans.length"
-          class="mt-2 divide-y divide-[#e9e6dd] overflow-hidden rounded-xl border border-[#e9e6dd] bg-[#f5f3ed]"
+          class="mt-2.5 divide-y divide-[#e7e3d9] overflow-hidden rounded-2xl border border-[#e7e3d9] bg-[#f6f4ef]"
         >
           <!-- 手機只留「方案名 + 一天能跑幾次」兩欄，佔比放到名稱下面當註解 -->
-          <div v-for="s in subPlans" :key="s.plan.id" class="flex items-center gap-2.5 px-3 py-2.5 sm:gap-3 sm:px-4">
+          <div v-for="s in subPlans" :key="s.plan.id" class="flex items-center gap-2.5 px-3.5 py-3 sm:gap-3 sm:px-4 lg:py-3.5">
             <div class="min-w-0 flex-1 sm:w-32 sm:flex-none">
-              <b class="block truncate text-sm text-[#1d2129]" :title="s.plan.note">{{ s.plan.name }}</b>
-              <span class="font-mono text-[11px] tabular-nums text-[#8b93a0] sm:hidden"
+              <b class="block truncate text-[14px] text-[#1d2129]" :title="s.plan.note">{{ s.plan.name }}</b>
+              <span class="font-mono text-[11px] tabular-nums text-[#a8aebb] sm:hidden"
                 >一則佔 {{ hasText ? fmtPct(s.pct) : '—' }}%</span
               >
             </div>
@@ -651,8 +721,12 @@ const tips = computed(() => {
             <span class="hidden shrink-0 text-right font-mono tabular-nums text-[#1d2129] sm:block sm:w-20 sm:text-sm"
               >{{ hasText ? fmtPct(s.pct) : '—' }}%<span class="text-xs text-[#8b93a0]">/則</span></span
             >
-            <span class="shrink-0 whitespace-nowrap text-right text-sm text-[#5c626e] sm:w-24"
-              >約 <b class="font-mono tabular-nums text-[#1d2129]">{{ hasText ? s.q.toLocaleString('en-US') : '—' }}</b> 次/天</span
+            <span
+              class="shrink-0 whitespace-nowrap rounded-[10px] bg-emerald-50 px-2.5 py-1.5 text-right ring-1 ring-inset ring-emerald-100 sm:w-24 sm:bg-transparent sm:px-0 sm:py-0 sm:ring-0"
+              ><b class="font-mono text-[15px] font-bold tabular-nums text-emerald-700 sm:text-sm sm:text-[#1d2129]">{{
+                hasText ? s.q.toLocaleString('en-US') : '—'
+              }}</b>
+              <span class="text-[11px] text-emerald-700/70 sm:text-sm sm:text-[#8b93a0]">次/天</span></span
             >
           </div>
         </div>

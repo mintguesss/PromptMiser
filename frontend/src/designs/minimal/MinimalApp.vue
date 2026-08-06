@@ -2,8 +2,10 @@
 import { computed, ref, watch } from 'vue'
 import { models, providers } from '../../composables/usePricing'
 import type { OptimizeResult } from '../../types'
-import MAnalysis from './MAnalysis.vue'
-import MResult from './MResult.vue'
+import HAnalysis from '../hybrid/HAnalysis.vue'
+import HResult from '../hybrid/HResult.vue'
+// 另外兩版（designs/minimal 的 MAnalysis/MResult、designs/cards 的 CAnalysis/CResult）
+// 暫時保留在專案裡，目前沒有掛上來。
 
 // 極簡版外殼：亮色編輯感。狀態（prompt/模型/結果）由 App.vue 持有，跟現行畫面共用。
 const props = defineProps<{
@@ -33,6 +35,7 @@ const modelGroups = computed(() =>
 const currentModelPricing = computed(
   () => models.find((m) => m.id === currentModel.value) ?? models[0],
 )
+
 </script>
 
 <template>
@@ -77,7 +80,7 @@ const currentModelPricing = computed(
             <span class="hidden shrink-0 sm:inline">你用</span>
             <select
               v-model="currentModel"
-              class="min-w-0 flex-1 cursor-pointer rounded-lg border border-[#e0ddd4] bg-white px-2 py-1.5 text-xs text-[#1d2129] focus:outline-emerald-400 sm:max-w-44 sm:flex-none"
+              class="min-w-0 flex-1 cursor-pointer border border-[#e0ddd4] bg-white text-[#1d2129] focus:outline-emerald-400 sm:max-w-44 sm:flex-none rounded-full px-3.5 py-2 text-[13px] shadow-[0_1px_2px_rgba(28,25,18,0.04)] sm:rounded-lg sm:px-2 sm:py-1.5 sm:text-xs"
             >
               <optgroup v-for="g in modelGroups" :key="g.provider" :label="g.provider">
                 <option v-for="m in g.items" :key="m.id" :value="m.id">{{ m.name }}</option>
@@ -86,7 +89,7 @@ const currentModelPricing = computed(
           </label>
           <button
             type="button"
-            class="shrink-0 whitespace-nowrap rounded-full bg-[#1d2129] px-4 py-2 text-xs font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-40 sm:px-5"
+            class="shrink-0 whitespace-nowrap rounded-full bg-[#1d2129] px-5 py-2 text-[13px] font-semibold text-white shadow-[0_2px_8px_-2px_rgba(28,25,18,0.4)] transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-40 sm:px-5 sm:py-2 sm:text-xs sm:shadow-none"
             :disabled="loading || !prompt.trim()"
             @click="emit('optimize')"
           >
@@ -100,13 +103,13 @@ const currentModelPricing = computed(
       </p>
     </header>
 
-    <MAnalysis
+    <HAnalysis
       v-if="tab === 'analysis'"
       v-model="prompt"
       :current-model-id="currentModel"
       :llm-profile="result?.consumption_profile ?? null"
       :llm-estimate="result?.usage_estimate ?? null"
     />
-    <MResult v-else-if="result" :result="result" :model-pricing="currentModelPricing" />
+    <HResult v-else-if="result" :result="result" :model-pricing="currentModelPricing" />
   </div>
 </template>
